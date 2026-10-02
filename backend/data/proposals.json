@@ -1,0 +1,11 @@
+[
+  {
+    "id": "pr1",
+    "requirementId": "r1",
+    "projectId": "p1",
+    "entrepreneurId": "u1",
+    "investorId": "u2",
+    "status": "invested",
+    "createdAt": "2024-02-28"
+  }
+]

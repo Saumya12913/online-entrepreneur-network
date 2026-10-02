@@ -1,0 +1,41 @@
+[
+  {
+    "id": "p1",
+    "ownerId": "u1",
+    "title": "NovaPay — Gig Worker Banking",
+    "description": "AI-underwritten banking and instant-pay accounts built for gig and freelance workers. Processing $2M+ monthly, seeking Series A to scale to new metro markets.",
+    "industry": "FinTech",
+    "status": "in_talks",
+    "fundingRequired": 8000000,
+    "projectType": "saas",
+    "patented": false,
+    "createdAt": "2024-02-01"
+  },
+  {
+    "id": "p2",
+    "ownerId": "u4",
+    "title": "CareConnect — Specialist Matching",
+    "description": "AI matching engine that pairs patients with the right specialist in under 5 minutes, cutting average wait times by 60%. $85K MRR, growing 20% MoM.",
+    "industry": "HealthTech",
+    "status": "open",
+    "fundingRequired": 5000000,
+    "projectType": "product",
+    "patented": true,
+    "patentProofName": "CareConnect-Matching-Patent-US11456782.pdf",
+    "createdAt": "2024-02-10",
+    "patentNumber": "US11456782B2"
+  },
+  {
+    "id": "p3",
+    "ownerId": "u6",
+    "title": "EduBridge — Adaptive Learning Platform",
+    "description": "Adaptive learning technology for Latin American students, currently serving 500K+ learners. Raised $3M seed, mapping expansion into 5 new countries.",
+    "industry": "EdTech",
+    "status": "open",
+    "fundingRequired": 4000000,
+    "projectType": "saas",
+    "patented": true,
+    "patentProofName": "EduBridge-Adaptive-Engine-Patent.pdf",
+    "createdAt": "2024-02-20"
+  }
+]

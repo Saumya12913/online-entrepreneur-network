@@ -1,0 +1,26 @@
+[
+  {
+    "id": "rv1",
+    "fromId": "u2",
+    "toId": "u1",
+    "rating": 5,
+    "comment": "Sarah and the NovaPay team were sharp, transparent, and moved fast through diligence. A pleasure to back.",
+    "createdAt": "2024-03-10"
+  },
+  {
+    "id": "rv2",
+    "fromId": "u1",
+    "toId": "u2",
+    "rating": 5,
+    "comment": "Michael brought real FinTech operating experience to the table, not just capital. Highly recommend Apex Ventures.",
+    "createdAt": "2024-03-11"
+  },
+  {
+    "id": "rv3",
+    "fromId": "u5",
+    "toId": "u6",
+    "rating": 4,
+    "comment": "Maria is building something real in LatAm EdTech. Great communicator, clear metrics, a bit slow on legal turnaround.",
+    "createdAt": "2024-02-27"
+  }
+]

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "m1",
+    "fromId": "u1",
+    "toId": "u2",
+    "content": "Hi Michael! I saw your portfolio includes FinTech companies. I'd love to discuss NovaPay's Series A round with you.",
+    "timestamp": "2024-03-01T10:00:00Z",
+    "read": true
+  },
+  {
+    "id": "m2",
+    "fromId": "u2",
+    "toId": "u1",
+    "content": "Hi Sarah! Absolutely, your traction looks impressive. Can we schedule a call next week to discuss the opportunity?",
+    "timestamp": "2024-03-01T11:30:00Z",
+    "read": true
+  },
+  {
+    "id": "m3",
+    "fromId": "u1",
+    "toId": "u2",
+    "content": "That would be great! I am free Tuesday or Thursday afternoon.",
+    "timestamp": "2024-03-01T12:00:00Z",
+    "read": true
+  },
+  {
+    "id": "m4",
+    "fromId": "u2",
+    "toId": "u1",
+    "content": "Let's do Thursday at 3pm EST. I will send a calendar invite. Could you share your deck beforehand?",
+    "timestamp": "2024-03-01T13:15:00Z",
+    "read": true
+  },
+  {
+    "id": "m5",
+    "fromId": "u4",
+    "toId": "u2",
+    "content": "Hi Michael, Priya here from CareConnect. I noticed Apex Ventures has invested in HealthTech before. Would love to connect!",
+    "timestamp": "2024-03-02T09:00:00Z",
+    "read": true
+  },
+  {
+    "id": "m6",
+    "fromId": "u2",
+    "toId": "u4",
+    "content": "Hi Priya! Yes, HealthTech is absolutely in our focus. Tell me more about CareConnect — what is your current MRR?",
+    "timestamp": "2024-03-02T10:30:00Z",
+    "read": true
+  },
+  {
+    "id": "m7",
+    "fromId": "u4",
+    "toId": "u2",
+    "content": "We are at $85K MRR, growing 20% month over month. Happy to share the full metrics deck!",
+    "timestamp": "2024-03-02T11:00:00Z",
+    "read": false
+  },
+  {
+    "id": "m8",
+    "fromId": "u5",
+    "toId": "u1",
+    "content": "Sarah, James here. Heard great things about NovaPay from a mutual connection. Would love to learn more about your vision.",
+    "timestamp": "2024-03-03T09:00:00Z",
+    "read": true
+  },
+  {
+    "id": "m9",
+    "fromId": "u1",
+    "toId": "u5",
+    "content": "James! Thanks so much. I would love to chat. Our focus is financial inclusion for gig workers — a massive underserved market.",
+    "timestamp": "2024-03-03T10:30:00Z",
+    "read": false
+  }
+]

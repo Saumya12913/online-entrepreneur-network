@@ -1,0 +1,20 @@
+[
+  {
+    "id": "r1",
+    "investorId": "u2",
+    "title": "Series A FinTech opportunities (LatAm/US)",
+    "description": "Apex Ventures is actively looking for FinTech founders with $50K+ MRR and clear regulatory strategy for a Series A check between $2M–$8M.",
+    "industry": "FinTech",
+    "budgetRange": "$2M - $8M",
+    "createdAt": "2024-02-05"
+  },
+  {
+    "id": "r2",
+    "investorId": "u5",
+    "title": "Early-stage Climate & EdTech bets",
+    "description": "James Wu is writing angel checks for mission-driven founders in Climate Tech and EdTech at pre-seed to seed stage.",
+    "industry": "Climate Tech",
+    "budgetRange": "$50K - $500K",
+    "createdAt": "2024-02-12"
+  }
+]

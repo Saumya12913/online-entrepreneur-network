@@ -1,0 +1,388 @@
+[
+ {
+  "id": "u1",
+  "name": "Sarah Chen",
+  "email": "sauEntrepreneur@nec.edu.in",
+  "password": "123",
+  "role": "entrepreneur",
+  "bio": "Serial entrepreneur building the future of financial inclusion. Previously co-founded two fintech startups with successful exits. Passionate about AI-powered financial services for the underbanked. NovaPay is processing $2M+ in transactions monthly.",
+  "location": "San Francisco, CA",
+  "industry": [
+   "FinTech",
+   "AI/ML",
+   "Financial Services"
+  ],
+  "skills": [
+   "Product Strategy",
+   "Fundraising",
+   "Team Building",
+   "Go-to-Market"
+  ],
+  "company": "NovaPay",
+  "position": "Co-Founder & CEO",
+  "fundingStage": "Series A",
+  "experience": "8 years",
+  "website": "novapay.io",
+  "linkedin": "linkedin.com/in/sarahchen",
+  "connections": [
+   "u2",
+   "u5"
+  ],
+  "pendingReceived": [
+   "u3"
+  ],
+  "pendingSent": [],
+  "joinedDate": "2024-01-15",
+  "verified": true
+ },
+ {
+  "id": "u2",
+  "name": "Michael Okafor",
+  "email": "sauInvestor@nec.edu.in",
+  "password": "123",
+  "role": "investor",
+  "bio": "Partner at Apex Ventures with a focus on Series A/B investments in FinTech, HealthTech, and Enterprise SaaS. Board member at 6 portfolio companies. Former Goldman Sachs investment banker with 14 years of deal experience.",
+  "location": "New York, NY",
+  "industry": [
+   "FinTech",
+   "HealthTech",
+   "Enterprise SaaS"
+  ],
+  "skills": [
+   "Due Diligence",
+   "Board Advisory",
+   "Portfolio Management",
+   "M&A"
+  ],
+  "company": "Apex Ventures",
+  "position": "General Partner",
+  "investmentRange": "$2M - $15M",
+  "portfolioCompanies": 24,
+  "agreementPolicy": "Apex Ventures invests via preferred equity or convertible notes. Standard terms: 1x non-participating liquidation preference, pro-rata rights in subsequent rounds, and a board observer seat for investments above $5M. Founders must provide a data room with financials, cap table, and IP assignment documentation before term sheet issuance. All submissions are reviewed within 10 business days.",
+  "experience": "14 years",
+  "website": "apexventures.com",
+  "linkedin": "linkedin.com/in/michaelokafor",
+  "connections": [
+   "u1",
+   "u4"
+  ],
+  "pendingReceived": [],
+  "pendingSent": [
+   "u6"
+  ],
+  "joinedDate": "2024-01-10",
+  "verified": true
+ },
+ {
+  "id": "u3",
+  "name": "Alex Rivera",
+  "email": "sauFreelancer@nec.edu.in",
+  "password": "123",
+  "role": "freelancer",
+  "bio": "Full-stack developer with 7 years building scalable web applications. React, Node.js, and AWS specialist. Built products used by 2M+ users. Available for short and long-term engagements with fast turnaround.",
+  "location": "Austin, TX",
+  "industry": [
+   "Software Development",
+   "Web3",
+   "SaaS"
+  ],
+  "skills": [
+   "React",
+   "Node.js",
+   "TypeScript",
+   "AWS",
+   "PostgreSQL",
+   "GraphQL"
+  ],
+  "company": "Self-Employed",
+  "position": "Full-Stack Developer",
+  "hourlyRate": "$120/hr",
+  "availableFor": "Contract & Project-based",
+  "experience": "7 years",
+  "website": "alexrivera.dev",
+  "linkedin": "linkedin.com/in/alexrivera",
+  "connections": [],
+  "pendingReceived": [],
+  "pendingSent": [
+   "u1"
+  ],
+  "joinedDate": "2024-02-01",
+  "verified": false
+ },
+ {
+  "id": "u4",
+  "name": "Priya Sharma",
+  "email": "sauStartup@nec.edu.in",
+  "password": "123",
+  "role": "startup_founder",
+  "bio": "Building the next generation of personalized healthcare. CareConnect uses AI to match patients with the right specialists, cutting wait times by 60%. Ex-Google PM. Forbes 30 Under 30. Currently raising $5M Seed round.",
+  "location": "Boston, MA",
+  "industry": [
+   "HealthTech",
+   "AI/ML",
+   "Consumer Health"
+  ],
+  "skills": [
+   "Product Management",
+   "Healthcare Ops",
+   "AI Strategy",
+   "Fundraising"
+  ],
+  "company": "CareConnect",
+  "position": "Founder & CEO",
+  "fundingStage": "Seed",
+  "companyDetails": {
+   "founded": "2022",
+   "headquarters": "Boston, MA, USA",
+   "teamSize": "12 employees",
+   "registrationNumber": "US-MA-8821340"
+  },
+  "experience": "5 years",
+  "website": "careconnect.health",
+  "linkedin": "linkedin.com/in/priyasharma",
+  "connections": [
+   "u2"
+  ],
+  "pendingReceived": [
+   "u5"
+  ],
+  "pendingSent": [],
+  "joinedDate": "2024-01-20",
+  "verified": true
+ },
+ {
+  "id": "u5",
+  "name": "James Wu",
+  "email": "james@example.com",
+  "password": "123",
+  "role": "investor",
+  "bio": "Angel investor and LP at multiple venture funds. 40+ investments across EdTech, Climate Tech, and Consumer. Former VP at Stripe. Writing checks $50K–$500K. Passionate about mission-driven founders building the next generation of transformative companies.",
+  "location": "Chicago, IL",
+  "industry": [
+   "EdTech",
+   "Climate Tech",
+   "Consumer",
+   "FinTech"
+  ],
+  "skills": [
+   "Angel Investing",
+   "Startup Mentoring",
+   "Payments",
+   "Go-to-Market"
+  ],
+  "company": "Wu Capital",
+  "position": "Angel Investor",
+  "investmentRange": "$50K - $500K",
+  "portfolioCompanies": 41,
+  "agreementPolicy": "Wu Capital invests at pre-seed and seed stage via SAFE or convertible note instruments. Terms follow standard YC-posted SAFE conventions with a valuation cap agreed at term sheet. No board seat required; quarterly investor updates expected. Strong preference for founders with demonstrated traction and a clear path to revenue within 18 months.",
+  "experience": "10 years",
+  "website": "wucapital.co",
+  "linkedin": "linkedin.com/in/jameswu",
+  "connections": [
+   "u1"
+  ],
+  "pendingReceived": [],
+  "pendingSent": [
+   "u4"
+  ],
+  "joinedDate": "2024-01-08",
+  "verified": true
+ },
+ {
+  "id": "u6",
+  "name": "Maria Santos",
+  "email": "maria@example.com",
+  "password": "123",
+  "role": "entrepreneur",
+  "bio": "Transforming education in Latin America through adaptive learning technology. EduBridge has helped 500K+ students improve academic outcomes. Raised $3M seed round. Seeking Series A to expand to 5 new countries.",
+  "location": "Miami, FL",
+  "industry": [
+   "EdTech",
+   "Latin America",
+   "Consumer"
+  ],
+  "skills": [
+   "EdTech",
+   "Community Building",
+   "Curriculum Design",
+   "Partnerships"
+  ],
+  "company": "EduBridge",
+  "position": "Co-Founder & CTO",
+  "fundingStage": "Series A",
+  "experience": "6 years",
+  "website": "edubridge.com",
+  "linkedin": "linkedin.com/in/mariasantos",
+  "connections": [],
+  "pendingReceived": [
+   "u2"
+  ],
+  "pendingSent": [],
+  "joinedDate": "2024-02-05",
+  "verified": false
+ },
+ {
+  "id": "u7",
+  "name": "David Kim",
+  "email": "david@example.com",
+  "password": "123",
+  "role": "freelancer",
+  "bio": "Product designer with 9 years crafting digital experiences for startups and Fortune 500 companies. Specialized in design systems, mobile apps, and brand identity. 50+ clients served across 12 countries.",
+  "location": "Seattle, WA",
+  "industry": [
+   "Product Design",
+   "Mobile Apps",
+   "Branding"
+  ],
+  "skills": [
+   "Figma",
+   "UI/UX Design",
+   "Design Systems",
+   "Prototyping",
+   "User Research",
+   "Branding"
+  ],
+  "company": "Self-Employed",
+  "position": "Product Designer",
+  "hourlyRate": "$150/hr",
+  "availableFor": "Long-term projects preferred",
+  "experience": "9 years",
+  "website": "davidkim.design",
+  "linkedin": "linkedin.com/in/davidkimdesign",
+  "connections": [],
+  "pendingReceived": [],
+  "pendingSent": [],
+  "joinedDate": "2024-02-10",
+  "verified": false
+ },
+ {
+  "id": "u8",
+  "name": "Ahmed Hassan",
+  "email": "ahmed@example.com",
+  "password": "123",
+  "role": "startup_founder",
+  "bio": "Building AgriFlow to modernize agricultural supply chains across MENA. Using IoT and blockchain to reduce food waste by 40%. Pre-seed funded. Looking for a technical co-founder and Series A investors who believe in sustainable food systems.",
+  "location": "Dubai, UAE",
+  "industry": [
+   "AgriTech",
+   "Supply Chain",
+   "Blockchain",
+   "IoT"
+  ],
+  "skills": [
+   "AgriTech",
+   "Supply Chain Management",
+   "Business Development",
+   "Arabic Markets"
+  ],
+  "company": "AgriFlow",
+  "position": "Founder",
+  "fundingStage": "Pre-seed",
+  "companyDetails": {
+   "founded": "2023",
+   "headquarters": "Dubai, UAE",
+   "teamSize": "6 employees",
+   "registrationNumber": "AE-DXB-5598712"
+  },
+  "experience": "4 years",
+  "website": "agriflow.ae",
+  "linkedin": "linkedin.com/in/ahmedhassan",
+  "connections": [],
+  "pendingReceived": [],
+  "pendingSent": [],
+  "joinedDate": "2024-02-15",
+  "verified": false
+ },
+ {
+  "id": "u9",
+  "name": "Lisa Park",
+  "email": "lisa@example.com",
+  "password": "123",
+  "role": "investor",
+  "bio": "Managing Partner at GreenHorizon Capital — a $50M impact fund focused on climate tech, sustainable agriculture, and clean energy. Previously at Sequoia and Accel. Committed to generating competitive returns while driving measurable environmental impact.",
+  "location": "Singapore",
+  "industry": [
+   "Climate Tech",
+   "AgriTech",
+   "Clean Energy",
+   "Sustainability"
+  ],
+  "skills": [
+   "Impact Investing",
+   "ESG Analysis",
+   "Climate Finance",
+   "Due Diligence"
+  ],
+  "company": "GreenHorizon Capital",
+  "position": "Managing Partner",
+  "investmentRange": "$500K - $5M",
+  "portfolioCompanies": 18,
+  "agreementPolicy": "GreenHorizon Capital invests exclusively in climate-positive ventures at seed and Series A. We lead or co-invest via preferred equity, targeting 10-20% ownership. Requirements: measurable environmental impact metrics, an ESG screening completed before diligence, and annual impact reporting post-investment. Diligence takes 4-6 weeks; term sheets include standard protective provisions and anti-dilution protection.",
+  "experience": "12 years",
+  "website": "greenhorizoncap.com",
+  "linkedin": "linkedin.com/in/lisapark",
+  "connections": [],
+  "pendingReceived": [],
+  "pendingSent": [],
+  "joinedDate": "2024-01-25",
+  "verified": true
+ },
+ {
+  "id": "u10",
+  "name": "Rachel Thompson",
+  "email": "sauMentor@nec.edu.in",
+  "password": "123",
+  "role": "mentor",
+  "bio": "Startup mentor and 3x founder. Sold my last company for $45M. Now helping early-stage founders avoid the costly mistakes I made. Specializing in go-to-market strategy, team dynamics, and founder mental health.",
+  "location": "London, UK",
+  "industry": [
+   "SaaS",
+   "Consumer",
+   "Marketplace"
+  ],
+  "skills": [
+   "GTM Strategy",
+   "Leadership",
+   "Fundraising",
+   "M&A",
+   "Team Building"
+  ],
+  "company": "Independent",
+  "position": "Startup Advisor & Mentor",
+  "experience": "16 years",
+  "website": "rachelthompson.co",
+  "linkedin": "linkedin.com/in/rachelthompson",
+  "connections": [],
+  "pendingReceived": [],
+  "pendingSent": [],
+  "joinedDate": "2024-01-05",
+  "verified": true
+ },
+ {
+  "id": "u11",
+  "name": "Arjun Verma",
+  "email": "admin@venturelink.app",
+  "password": "123",
+  "role": "admin",
+  "bio": "Platform administrator at VentureLink. Responsible for community safety, patent submission oversight, and investor verification.",
+  "location": "Chennai, India",
+  "industry": [
+   "Platform Operations",
+   "Trust & Safety"
+  ],
+  "skills": [
+   "Moderation",
+   "Compliance",
+   "Analytics"
+  ],
+  "company": "VentureLink",
+  "position": "Platform Administrator",
+  "experience": "10 years",
+  "website": "venturelink.app",
+  "linkedin": "linkedin.com/in/arjunverma",
+  "connections": [],
+  "pendingSent": [],
+  "pendingReceived": [],
+  "verified": true
+ }
+]

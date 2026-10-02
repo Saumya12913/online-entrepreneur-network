@@ -1,0 +1,74 @@
+[
+  {
+    "id": "w1",
+    "hostId": "u2",
+    "title": "Navigating the 2026 Funding Landscape: What Investors Really Want",
+    "description": "Join Michael Okafor from Apex Ventures for an inside look at what top-tier investors are looking for in today's challenging funding environment. We cover due diligence red flags, pitch deck essentials, and how to build lasting relationships with the right VCs.",
+    "date": "2026-08-15",
+    "time": "2:00 PM EST",
+    "duration": "90 min",
+    "topic": "Fundraising",
+    "registeredCount": 247,
+    "maxAttendees": 500,
+    "tags": [
+      "Fundraising",
+      "Venture Capital",
+      "Pitch Deck"
+    ],
+    "registeredUserIds": []
+  },
+  {
+    "id": "w2",
+    "hostId": "u1",
+    "title": "Building a FinTech Startup from Zero to Series A",
+    "description": "Sarah Chen shares the complete NovaPay journey from idea to a fully funded Series A. Topics include regulatory navigation, building trust with financial institutions, product-market fit validation, and assembling a world-class team on a limited budget.",
+    "date": "2026-08-22",
+    "time": "11:00 AM PST",
+    "duration": "60 min",
+    "topic": "Entrepreneurship",
+    "registeredCount": 183,
+    "maxAttendees": 300,
+    "tags": [
+      "FinTech",
+      "Startups",
+      "Series A"
+    ],
+    "registeredUserIds": []
+  },
+  {
+    "id": "w3",
+    "hostId": "u4",
+    "title": "Product-Market Fit in HealthTech: Lessons from the Trenches",
+    "description": "Priya Sharma from CareConnect discusses the unique challenges of achieving product-market fit in healthcare. Learn how to navigate HIPAA compliance, work with healthcare providers, and build products that patients and doctors actually use and love.",
+    "date": "2026-09-05",
+    "time": "3:00 PM EST",
+    "duration": "75 min",
+    "topic": "Product",
+    "registeredCount": 112,
+    "maxAttendees": 200,
+    "tags": [
+      "HealthTech",
+      "Product-Market Fit",
+      "Healthcare"
+    ],
+    "registeredUserIds": []
+  },
+  {
+    "id": "w4",
+    "hostId": "u10",
+    "title": "Founder Mental Health: Thriving Under Pressure",
+    "description": "Rachel Thompson, 3x founder, discusses the psychological challenges of startup building. Coping strategies, maintaining perspective through adversity, knowing when to pivot vs persist, and building resilient team cultures that last.",
+    "date": "2026-09-12",
+    "time": "4:00 PM BST",
+    "duration": "60 min",
+    "topic": "Leadership",
+    "registeredCount": 89,
+    "maxAttendees": 150,
+    "tags": [
+      "Leadership",
+      "Mental Health",
+      "Founders"
+    ],
+    "registeredUserIds": []
+  }
+]
