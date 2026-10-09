@@ -1,0 +1,9 @@
+# Build context hygiene for the root Dockerfile.
+node_modules
+**/node_modules
+frontend/dist
+.git
+**/*.log
+**/.env
+**/.env.local
+.DS_Store

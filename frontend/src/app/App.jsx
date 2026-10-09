@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { Home, Search, Users, MessageCircle, Video, User, LogOut, Plus, Send, X, Check, MapPin, Edit2, Save, Calendar, Globe, TrendingUp, Menu, Bell, Clock, Zap, CheckCircle, UserPlus, Building2, Wallet, ChevronLeft, Briefcase, DollarSign, Link2, Star, ShieldCheck, ChevronRight, Filter, Trash2 } from "./icons";
-import { loadState, saveCollection, apiLogin, apiRegister, apiMe, apiOauthDemo, apiNoveltyCheck, apiAdminStats, startGoogleLogin, takeOauthTokenFromUrl, takeOauthErrorFromUrl, getToken, setToken } from "../api.js";
+import { Home, Search, Users, MessageCircle, Video, User, LogOut, Plus, Send, X, Check, MapPin, Edit2, Save, Calendar, Globe, TrendingUp, Menu, Bell, Clock, Zap, CheckCircle, UserPlus, Building2, Wallet, ChevronLeft, Briefcase, DollarSign, Link2, Star, ShieldCheck, ChevronRight, Filter, Trash2, GraduationCap, Award, UserCheck, UserX, FileText, Target, Layers, BarChart, Paperclip, Sparkles, Printer, Download, Monitor, KeyRound } from "./icons";
+import { loadState, saveCollection, apiLogin, apiRegister, apiMe, apiOauthDemo, apiNoveltyCheck, apiPitchReview, apiProjectSummary, apiNoveltyReport, apiAdminStats, startGoogleLogin, takeOauthTokenFromUrl, takeOauthTwoFactorFromUrl, takeOauthErrorFromUrl, getToken, setToken, apiSessions, apiRevokeSession, apiRevokeOtherSessions, apiLogout, apiChangePassword, apiForgotPassword, apiResetPassword, apiVerifyTwoFactor, apiResendTwoFactor, apiTwoFactorStatus, apiEnableTwoFactor, apiConfirmTwoFactor, apiDisableTwoFactor, apiAlertChannels, apiSaveAlertChannels, apiMyAlerts, apiOutbox, apiNotifyImportant, apiWebinarInvites } from "../api.js";
 import { UI_LANGS, enableUiLanguage } from "./i18n.js";
+import { ThemePicker } from "./theme-picker.jsx";
+import { scoreMatch, rankProjectsForInvestor, rankInvestorsForProject } from "./ai-match.js";
 
 // ======================== TYPES ========================
 
@@ -500,6 +502,53 @@ const DEMO_ACCOUNTS = [{
   name: "Arjun Verma",
   email: "admin@venturelink.app"
 }];
+// The password the build's own sample accounts were seeded with. It is no longer
+// printed on the sign-in card; instead those accounts are remembered (see
+// rememberSignedInAccount) so one click signs them in.
+const DEMO_PASSWORD = "123";
+const isDemoEmail = email => DEMO_ACCOUNTS.some(d => d.email.toLowerCase() === String(email || "").trim().toLowerCase());
+
+// Which sign-ins this browser remembers. Only the address, the display name and
+// the role are kept — never a password. A real account's credential is saved by
+// the browser itself, through the autocomplete attributes on the form fields.
+const SAVED_ACCOUNTS_KEY = "vl_saved_accounts";
+function loadSavedAccounts() {
+  try {
+    // First run on this browser: the build's own sample accounts are saved up
+    // front, so typing the start of one offers it back instead of printing the
+    // address on the card.
+    if (localStorage.getItem(SAVED_ACCOUNTS_KEY) === null) return persistSavedAccounts(DEMO_ACCOUNTS.map(d => ({
+      email: d.email,
+      name: d.name,
+      role: d.role,
+      demo: true
+    })));
+    const rows = JSON.parse(localStorage.getItem(SAVED_ACCOUNTS_KEY) || "[]");
+    if (!Array.isArray(rows)) return [];
+    return rows.filter(r => r && typeof r.email === "string" && r.email.includes("@")).slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+function persistSavedAccounts(rows) {
+  try { localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(rows.slice(0, 8))); } catch { /* private mode: nothing to remember */ }
+  return rows;
+}
+function rememberSignedInAccount(user) {
+  if (!user || !user.email) return loadSavedAccounts();
+  const row = {
+    email: user.email,
+    name: user.name || String(user.email).split("@")[0],
+    role: user.role || "entrepreneur",
+    demo: isDemoEmail(user.email)
+  };
+  const rest = loadSavedAccounts().filter(r => r.email.toLowerCase() !== row.email.toLowerCase());
+  return persistSavedAccounts([row, ...rest]);
+}
+function forgetSignedInAccount(email) {
+  return persistSavedAccounts(loadSavedAccounts().filter(r => r.email.toLowerCase() !== String(email).toLowerCase()));
+}
+
 // Terminology for a proposed engagement, based on the *recipient's* role:
 // freelancers are paid per engagement, so their letter speaks of a "Payment";
 // every other role is employed, so the letter quotes "LPA" (lakhs per annum).
@@ -539,9 +588,19 @@ const ROLE_BADGE = {
 // Multi-lingual UI: 13 languages. Phrases live in i18n.js + i18n-catalog-*.js; the
 // runtime translator (i18n-runtime.js) rewrites the rendered interface into the chosen one.
 const I18N_LANGS = UI_LANGS; // en, ta, hi, bn, pa, es, fr, de, pt, it, ru, zh, ja
-const AVATAR_COLORS = ["bg-violet-500", "bg-emerald-500", "bg-amber-600", "bg-rose-500", "bg-sky-500", "bg-blue-600", "bg-teal-500", "bg-pink-500", "bg-orange-500", "bg-cyan-600"];function getAvatarColor(id) {
+const AVATAR_COLORS = ["bg-violet-500", "bg-emerald-500", "bg-amber-600", "bg-rose-500", "bg-sky-500", "bg-blue-600", "bg-teal-500", "bg-pink-500", "bg-orange-500", "bg-cyan-600"];
+function getAvatarColor(id) {
   const num = parseInt(id.replace(/\D/g, "")) || 0;
   return AVATAR_COLORS[num % AVATAR_COLORS.length];
+}
+// An email carries no digits to index by, so the accounts this browser remembers
+// fall back to a stable letter-sum hash instead of all landing on the first colour.
+function avatarColorForSeed(seed) {
+  const digits = String(seed || "").replace(/\D/g, "");
+  if (digits) return getAvatarColor(digits);
+  let sum = 0;
+  for (const ch of String(seed || "")) sum += ch.codePointAt(0);
+  return AVATAR_COLORS[sum % AVATAR_COLORS.length];
 }
 function getInitials(name) {
   return name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
@@ -567,6 +626,75 @@ function formatShortDate(ts) {
     day: "numeric"
   });
 }
+// Same short date, read out in the interface language so a screen that is
+// already translated does not drop an English date into the middle of it.
+function formatShortDateIn(ts, lang) {
+  return new Date(ts).toLocaleDateString(lang || undefined, {
+    month: "short",
+    day: "numeric"
+  });
+}
+
+// ---- Sign-in activity + session labels (security panel) ----
+// Only the browser string the server already receives is turned into a short
+// device name here — no extra data is collected.
+function describeDevice(userAgent) {
+  const ua = String(userAgent || "");
+  if (!ua || ua === "unknown") return "Unknown device";
+  const browser = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
+  const os = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad|iPod/.test(ua) ? "iOS" : /Mac OS X/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "Unknown OS";
+  return `${browser} · ${os}`;
+}
+const SESSION_VIA_LABELS = {
+  password: "Password",
+  register: "Sign-up",
+  google: "Google",
+  "oauth-demo": "Google"
+};
+const ACTIVITY_VIA_LABELS = {
+  password: "Sign-in",
+  register: "Account created",
+  google: "Google sign-in",
+  "oauth-demo": "Google sign-in",
+  "reset-request": "Reset code requested",
+  "reset-password": "Password reset",
+  "change-password": "Password changed",
+  logout: "Signed out"
+};
+// Backend details can lead with a count ("3 other session(s) signed out").
+// Splitting it keeps the wording its own text node so it can be translated.
+function splitDetail(detail) {
+  const match = /^(\d+)\s+([\s\S]*)$/.exec(String(detail || ""));
+  return match ? { count: match[1], rest: match[2] } : { count: "", rest: String(detail || "") };
+}
+
+// The channels an alert can leave through, and the second factor can use.
+const ALERT_CHANNEL_KEYS = ["email", "sms", "whatsapp"];
+const CHANNEL_LABELS = {
+  email: "Email",
+  sms: "Text message (SMS)",
+  whatsapp: "WhatsApp"
+};
+// The kinds the platform sends outward, for the delivery log labels.
+const ALERT_KIND_LABELS = {
+  "two-factor-code": "Verification code",
+  "password-reset": "Password reset code",
+  "sign-in-alert": "Sign-in notice",
+  "offer-sent": "Offer letter sent",
+  "offer-decision": "Offer reply",
+  "agreement-made": "Agreement filed",
+  "meeting-scheduled": "Meeting scheduled",
+  "webinar-invite": "Webinar invitation",
+  "verification-granted": "Verification granted",
+  "proposal-received": "Proposal received",
+  "message-received": "New message"
+};
+const OUTBOX_STATUS_STYLES = {
+  sent: "text-emerald-700 bg-emerald-50 border-emerald-100",
+  queued: "text-amber-700 bg-amber-50 border-amber-100",
+  failed: "text-rose-700 bg-rose-50 border-rose-100",
+  skipped: "text-slate-500 bg-slate-50 border-slate-100"
+};
 
 // ---- Deterministic daily portfolio growth (seeded so it's stable across renders) ----
 function seededDailyChange(seed, dayIndex) {
@@ -632,6 +760,449 @@ function VerifiedBadge({
     </span>;
 }
 
+// ======================== PROFILE DEPTH (additive) ========================
+// Each step is one equal-weight item of the profile completion score. Optional
+// fields (education, work history) are listed here but never required by any
+// existing feature, so an older account simply scores lower.
+const PROFILE_STEPS = [{
+  label: "Bio",
+  test: u => (u.bio || "").trim().length > 20
+}, {
+  label: "Location",
+  test: u => !!u.location
+}, {
+  label: "Position",
+  test: u => !!u.position
+}, {
+  label: "Company",
+  test: u => !!u.company
+}, {
+  label: "Industry",
+  test: u => (u.industry || []).length > 0
+}, {
+  label: "Skills",
+  test: u => (u.skills || []).length >= 3
+}, {
+  label: "Experience",
+  test: u => !!u.experience
+}, {
+  label: "Work history",
+  test: u => (u.experienceList || []).some(e => e.role || e.company)
+}, {
+  label: "Education",
+  test: u => (u.education || []).some(e => e.school || e.degree)
+}, {
+  label: "Website or LinkedIn",
+  test: u => !!(u.website || u.linkedin)
+}, {
+  label: "First connection",
+  test: u => (u.connections || []).length > 0
+}];
+function profileSteps(u) {
+  if (!u) return [];
+  return PROFILE_STEPS.map(s => ({
+    label: s.label,
+    done: !!s.test(u)
+  }));
+}
+function profileCompletion(u) {
+  const steps = profileSteps(u);
+  if (!steps.length) return 0;
+  return Math.round(steps.filter(s => s.done).length / steps.length * 100);
+}
+function ProfileStrengthCard({
+  user,
+  onEdit
+}) {
+  const steps = profileSteps(user);
+  const pct = profileCompletion(user);
+  const missing = steps.filter(s => !s.done);
+  const bar = pct >= 90 ? "bg-emerald-500" : pct >= 60 ? "bg-blue-600" : "bg-amber-500";
+  const num = pct >= 90 ? "text-emerald-600" : pct >= 60 ? "text-blue-700" : "text-amber-600";
+  return <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="font-bold text-slate-900">Profile completion</h3>
+        <span className={`text-xl font-bold ${num}`}>{pct}%</span>
+      </div>
+      <div className="w-full bg-slate-100 rounded-full overflow-hidden my-3" style={{
+      height: "8px"
+    }}>
+        <div style={{
+        width: `${pct}%`,
+        height: "8px",
+        backgroundColor: pct >= 90 ? "#059669" : pct >= 60 ? "#1d4ed8" : "#d97706",
+        transition: "width 0.4s ease"
+      }} />
+      </div>
+      {missing.length === 0 ? <p className="text-xs text-emerald-700 font-semibold">Your profile is complete.</p> : <>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Still to add</p>
+          <div className="flex flex-wrap gap-1.5">
+            {missing.map(s => <span key={s.label} className="text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded-lg font-medium">{s.label}</span>)}
+          </div>
+          <button onClick={onEdit} className="mt-3 text-xs px-3.5 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 font-semibold transition-colors flex items-center gap-1.5">
+            <Edit2 className="w-3.5 h-3.5" /> Complete these steps
+          </button>
+        </>}
+      <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-100">
+        <div className="text-center bg-slate-50 rounded-xl py-2.5">
+          <div className="text-base font-bold text-slate-900">{steps.filter(s => s.done).length}</div>
+          <div className="text-[10px] text-slate-500">Steps done</div>
+        </div>
+        <div className="text-center bg-slate-50 rounded-xl py-2.5">
+          <div className="text-base font-bold text-slate-900">{missing.length}</div>
+          <div className="text-[10px] text-slate-500">Remaining</div>
+        </div>
+      </div>
+    </div>;
+}
+
+// ---- Extra trust badges earned from what is already on the platform ----
+const TRUST_TONES = {
+  sky: "bg-sky-50 text-sky-700 border-sky-200",
+  violet: "bg-violet-50 text-violet-700 border-violet-200",
+  amber: "bg-amber-50 text-amber-700 border-amber-200",
+  emerald: "bg-emerald-50 text-emerald-700 border-emerald-200"
+};
+function trustBadgesFor(user, ctx) {
+  if (!user) return [];
+  const owned = ctx.projectsOwned || [];
+  const list = [];
+  if (profileCompletion(user) >= 90) list.push({
+    key: "complete",
+    label: "Profile complete",
+    tone: "sky",
+    icon: CheckCircle
+  });
+  if (owned.some(p => p.noveltyStatus === "cleared" && (p.patented === true || p.patented === "yes"))) list.push({
+    key: "patent",
+    label: "Patent verified",
+    tone: "violet",
+    icon: ShieldCheck
+  });
+  if (ctx.avgRating !== null && ctx.avgRating !== undefined && ctx.avgRating >= 4.5 && (ctx.reviewCount || 0) >= 2) list.push({
+    key: "rated",
+    label: "Top rated",
+    tone: "amber",
+    icon: Award
+  });
+  if ((user.connections || []).length >= 5) list.push({
+    key: "connector",
+    label: "Trusted connector",
+    tone: "emerald",
+    icon: Users
+  });
+  return list;
+}
+function TrustBadgeRow({
+  badges
+}) {
+  if (!badges || badges.length === 0) return null;
+  return <>
+      {badges.map(b => {
+    const Icon = b.icon;
+    return <span key={b.key} className={`inline-flex items-center gap-1 border px-1.5 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${TRUST_TONES[b.tone]}`}>
+              <Icon className="w-3 h-3" /> {b.label}
+            </span>;
+  })}
+    </>;
+}
+
+// ---- Structured work history and education ----
+function TimelineCard({
+  title,
+  icon,
+  rows,
+  head,
+  sub
+}) {
+  const items = (rows || []).filter(r => r && (r[head] || r[sub]));
+  if (items.length === 0) return null;
+  return <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+      <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+        {icon} {title}
+      </h3>
+      <div className="space-y-4">
+        {items.map((r, idx) => <div key={idx} className={idx < items.length - 1 ? "border-b border-slate-50 pb-4" : ""}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-900 truncate">{r[head] || r[sub]}</p>
+                {r[head] && r[sub] && <p className="text-xs text-slate-500 truncate">{r[sub]}</p>}
+                {r.note && <p className="text-xs text-slate-400 mt-1 leading-relaxed">{r.note}</p>}
+              </div>
+              <span className="text-[10px] text-slate-400 font-semibold flex-shrink-0">
+                {[r.from, r.to].filter(Boolean).join(" – ")}
+              </span>
+            </div>
+          </div>)}
+      </div>
+    </div>;
+}
+
+// ---- Who to reach out to next, with the reason spelled out ----
+// Pure scoring over what is already on the platform: shared industries and
+// skills, mutual connections, location, and the role pairing that matters to
+// the viewer (founders want investors, investors want patented projects…).
+const SHARED = (a, b) => {
+  const x = a || [],
+    y = b || [];
+  return x.filter(v => y.includes(v));
+};
+function recommendMembers(me, allUsers, ownedProjects, ratingOf) {
+  if (!me) return [];
+  const myIds = new Set([...(me.connections || []), ...(me.pendingSent || []), ...(me.pendingReceived || [])]);
+  const myIndustries = new Set((ownedProjects || []).map(p => p.industry).filter(Boolean));
+  const founder = me.role === "entrepreneur" || me.role === "startup_founder";
+  const out = [];
+  allUsers.forEach(u => {
+    if (u.id === me.id || myIds.has(u.id)) return;
+    const reasons = [];
+    let score = 0;
+    const mutual = SHARED(me.connections || [], u.connections || []);
+    if (mutual.length) {
+      score += mutual.length * 9;
+      reasons.push({
+        key: "mutual",
+        label: "Mutual connections",
+        value: String(mutual.length)
+      });
+    }
+    const ind = SHARED(me.industry || [], u.industry || []);
+    if (ind.length) {
+      score += ind.length * 8;
+      reasons.push({
+        key: "industry",
+        label: "Shared industry",
+        value: ind[0]
+      });
+    }
+    const skills = SHARED(me.skills || [], u.skills || []);
+    if (skills.length) {
+      score += skills.length * 5;
+      reasons.push({
+        key: "skills",
+        label: "Shared skills",
+        value: String(skills.length)
+      });
+    }
+    if (me.location && u.location === me.location) {
+      score += 6;
+      reasons.push({
+        key: "city",
+        label: "Same city",
+        value: u.location
+      });
+    }
+    if (founder && u.role === "investor") {
+      if (me.fundingStage && u.investmentRange && u.investmentRange.toLowerCase().includes(me.fundingStage.toLowerCase())) {
+        score += 12;
+        reasons.push({
+          key: "stage",
+          label: "Invests at your stage",
+          value: me.fundingStage
+        });
+      } else {
+        score += 6;
+        reasons.push({
+          key: "investor",
+          label: "Active investor",
+          value: ""
+        });
+      }
+    }
+    if (founder && u.role === "freelancer" && ind.length) {
+      score += 8;
+      reasons.push({
+        key: "hire",
+        label: "Available for hire",
+        value: u.position || ""
+      });
+    }
+    if (me.role === "investor") {
+      if (u.role === "entrepreneur" || u.role === "startup_founder") {
+        score += 5;
+        reasons.push({
+          key: "sector",
+          label: "Sector match",
+          value: (u.industry || [])[0] || ""
+        });
+      }
+    }
+    if ([...myIndustries].some(i => (u.industry || []).includes(i))) score += 4;
+    if (u.verified) score += 3;
+    const rating = ratingOf ? ratingOf(u.id) : null;
+    if (rating && rating.avg !== null && rating.avg >= 4.5 && rating.count >= 2) {
+      score += 7;
+      reasons.push({
+        key: "rated",
+        label: "Top rated",
+        value: rating.avg.toFixed(1)
+      });
+    }
+    if (profileCompletion(u) >= 90) score += 3;
+    if (score <= 0) return;
+    out.push({
+      user: u,
+      score: Math.min(99, 30 + score),
+      reasons: reasons.slice(0, 3),
+      mutual
+    });
+  });
+  return out.sort((a, b) => b.score - a.score).slice(0, 8);
+}
+
+// ---- Project lifecycle (additive): Idea → Prototype → MVP → Launched → Scaling → Funded.
+// A project only carries `lifecycle` once someone moves it; until then the stage is
+// derived from the status it already had, so every existing project shows a sensible step.
+const LIFECYCLE = [{
+  key: "idea",
+  label: "Idea"
+}, {
+  key: "prototype",
+  label: "Prototype"
+}, {
+  key: "mvp",
+  label: "MVP"
+}, {
+  key: "launched",
+  label: "Launched"
+}, {
+  key: "scaling",
+  label: "Scaling"
+}, {
+  key: "funded",
+  label: "Funded"
+}];
+function lifecycleOf(project) {
+  if (project && LIFECYCLE.some(s => s.key === project.lifecycle)) return project.lifecycle;
+  if (project && project.status === "funded") return "funded";
+  if (project && project.status === "in_talks") return "scaling";
+  return "mvp";
+}
+function lifecycleIndex(key) {
+  return LIFECYCLE.findIndex(s => s.key === key);
+}
+function lifecycleLabel(key) {
+  const hit = LIFECYCLE.find(s => s.key === key);
+  return hit ? hit.label : key || "";
+}
+
+function LifecycleStepper({
+  stage,
+  onSet
+}) {
+  const at = lifecycleIndex(stage);
+  return <div>
+      <div className="flex items-center">
+      {LIFECYCLE.map((s, i) => <div key={s.key} className="flex items-center flex-1 last:flex-none">
+          <button type="button" disabled={!onSet} onClick={() => onSet && onSet(s.key)} title={s.label} className={`flex-shrink-0 w-7 h-7 rounded-full text-[11px] font-bold flex items-center justify-center border-2 transition-colors ${i < at ? "bg-blue-700 border-blue-700 text-white" : i === at ? "bg-white border-blue-700 text-blue-700 ring-4 ring-blue-100" : "bg-white border-slate-200 text-slate-400"} ${onSet ? "hover:border-blue-800 cursor-pointer" : "cursor-default"}`}>
+            {i < at ? <Check className="w-3.5 h-3.5" /> : i + 1}
+          </button>
+          {i < LIFECYCLE.length - 1 && <div className={`flex-1 h-0.5 mx-1 rounded ${i < at ? "bg-blue-700" : "bg-slate-200"}`} />}
+        </div>)}
+    </div>
+    <div className="flex mt-2">
+      {LIFECYCLE.map((s, i) => <div key={s.key} className="flex-1 text-center">
+          <p className={`text-[10px] font-bold uppercase tracking-wider ${i === at ? "text-blue-700" : i < at ? "text-slate-500" : "text-slate-400"}`}>{s.label}</p>
+        </div>)}
+    </div>
+  </div>;
+}
+
+// Milestones are optional and start empty; the shape is {title, note, done}.
+function milestoneProgress(rows) {
+  const list = rows || [];
+  const done = list.filter(m => m.done).length;
+  return {
+    done,
+    total: list.length,
+    pct: list.length ? Math.round(done / list.length * 100) : 0
+  };
+}
+
+// Documents are listed on the project page; the file itself travels as a data URL,
+// exactly like the patent proof and the pitch deck already do.
+function fileSizeLabel(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Money is read off the deal, so the tracker keeps it compact: $8M, $750K, $1,200.
+function moneyLabel(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e6) return `$${+(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `$${Math.round(v / 1e3)}K`;
+  return `$${v.toLocaleString()}`;
+}
+
+// The "why" behind an AI fit score: explainable pills, never a bare number.
+// The phrase is a catalogue row; only the trailing data (a sector, a cheque range)
+// stays as the member wrote it, exactly like names, bios and skill lists.
+function MatchPills({
+  reasons,
+  gaps
+}) {
+  const list = reasons || [];
+  const missing = gaps || [];
+  if (!list.length && !missing.length) return null;
+  const pill = (item, positive) => <span key={`${item.label}|${item.value || ""}`} className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${positive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+      {positive && <Check className="w-3 h-3 inline mr-0.5 -mt-0.5" />}
+      <span>{item.label}</span>
+      {item.value ? <> <span className="font-bold">{item.value}</span></> : null}
+    </span>;
+  return <div className="flex flex-wrap gap-1.5">
+      {list.map(r => pill(r, true))}
+      {missing.map(g => pill(g, false))}
+    </div>;
+}
+
+function FitBadge({
+  score
+}) {
+  const tone = score >= 75 ? "bg-emerald-600" : score >= 55 ? "bg-blue-700" : score >= 35 ? "bg-amber-600" : "bg-slate-400";
+  return <span className={`text-xs font-bold text-white px-2.5 py-1 rounded-full ${tone}`}>
+      {score}%
+    </span>;
+}
+
+// ---- Repeatable editor used by Edit Profile ----
+function EntryListEditor({
+  title,
+  itemLabel,
+  addLabel,
+  rows,
+  fields,
+  onChange
+}) {
+  const list = rows || [];
+  const patch = (idx, key, val) => onChange(list.map((r, i) => i === idx ? {
+    ...r,
+    [key]: val
+  } : r));
+  return <div>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-bold text-slate-600">{title}</p>
+        <button type="button" onClick={() => onChange([...list, {}])} className="text-xs px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold flex items-center gap-1">
+          <Plus className="w-3 h-3" /> {addLabel}
+        </button>
+      </div>
+      {list.length === 0 ? <p className="text-xs text-slate-400 mb-1">Nothing added yet.</p> : <div className="space-y-2 mb-1">
+          {list.map((r, idx) => <div key={idx} className="border border-slate-200 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{itemLabel} {idx + 1}</span>
+                <button type="button" onClick={() => onChange(list.filter((_, i) => i !== idx))} className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-400 hover:text-rose-600 transition-colors">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {fields.map(f => <input key={f.key} value={r[f.key] || ""} onChange={e => patch(idx, f.key, e.target.value)} placeholder={f.placeholder} className={`px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-white ${f.wide ? "col-span-2" : ""}`} />)}
+              </div>
+            </div>)}
+        </div>}
+    </div>;
+}
+
 // ---- Startup Funding Progress Tracker ----
 function FundingProgressBar({
   required,
@@ -681,6 +1252,7 @@ function StarRating({
 function ProfileView({
   user,
   isOwnProfile,
+  compact = false,
   onEdit,
   onConnect,
   onMessage,
@@ -688,17 +1260,30 @@ function ProfileView({
   matchScore,
   avgRating,
   reviewCount,
-  reviewsList = []
+  reviewsList = [],
+  ownedProjects = [],
+  onFollow,
+  isFollowing,
+  followerCount,
+  followingCount
 }) {
-  return <div className="p-6 lg:p-8 max-w-3xl mx-auto pb-12">
+  // The cards used to sit in two columns of very different height, which left a
+  // long empty stretch beside the shorter one. They now run in full-width bands,
+  // so the cards inside a band are level with each other and nothing trails off
+  // beside an empty column.
+  const expRows = (user.experienceList || []).filter(r => r && (r.role || r.company));
+  const eduRows = (user.education || []).filter(r => r && (r.school || r.degree));
+  const hasChips = user.skills.length > 0 || user.industry.length > 0;
+  const isFounder = user.role === "startup_founder";
+  return <div className="max-w-4xl mx-auto px-6 pt-6 lg:pt-8 pb-12">
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-5">
-        <div className="h-28 bg-gradient-to-r from-[#0F1E3D] via-[#1B2D5B] to-[#22345E]" />
+        <div className={(compact ? "h-14" : "h-28") + " bg-gradient-to-r from-[#0F1E3D] via-[#1B2D5B] to-[#22345E]"} />
         <div className="px-6 pb-6">
-          <div className="flex items-end justify-between -mt-10 mb-4">
-            <div className={`w-20 h-20 ${getAvatarColor(user.id)} rounded-2xl flex items-center justify-center text-white text-2xl font-bold border-4 border-white shadow-lg`}>
+          <div className={"flex items-end justify-between " + (compact ? "-mt-7" : "-mt-10") + " mb-4"}>
+            <div className={`${compact ? "w-14 h-14 text-xl" : "w-20 h-20 text-2xl"} ${getAvatarColor(user.id)} rounded-2xl flex items-center justify-center text-white font-bold border-4 border-white shadow-lg`}>
               {getInitials(user.name)}
             </div>
-            <div className="flex gap-2 mt-10">
+            <div className={"flex gap-2 " + (compact ? "mt-7" : "mt-10")}>
               {isOwnProfile && <button onClick={onEdit} className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                   <Edit2 className="w-3.5 h-3.5" /> Edit Profile
                 </button>}
@@ -712,17 +1297,27 @@ function ProfileView({
               {!isOwnProfile && connectionStatus === "received" && <button onClick={onConnect} className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold transition-colors">
                   <Check className="w-3.5 h-3.5" /> Accept Request
                 </button>}
+              {!isOwnProfile && onFollow && (isFollowing ? <button onClick={onFollow} className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+                    <UserCheck className="w-3.5 h-3.5" /> Following
+                  </button> : <button onClick={onFollow} className="flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-sm font-semibold transition-colors">
+                    <UserPlus className="w-3.5 h-3.5" /> Follow
+                  </button>)}
             </div>
           </div>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">{user.role === "startup_founder" ? user.company : user.name}</h1>
+              <h1 className="text-2xl font-bold text-slate-900">{user.role === "startup_founder" ? user.company || user.name : user.name}</h1>
               <p className="text-slate-500 mt-0.5 text-sm">
-                {user.role === "startup_founder" ? <>Founded by <span className="font-semibold text-slate-700">{user.name}</span>{user.position && <> · {user.position}</>}</> : <>{user.position} <span className="text-slate-400">at</span> <span className="font-semibold text-slate-700">{user.company}</span></>}
+                {user.role === "startup_founder" ? <>Founded by <span className="font-semibold text-slate-700">{user.name}</span>{user.position && <> · {user.position}</>}</> : (user.position || user.company) && <>{user.position}{user.position && user.company && <> <span className="text-slate-400">at</span> </>}<span className="font-semibold text-slate-700">{user.company}</span></>}
               </p>
               <div className="flex items-center gap-3 mt-2 flex-wrap">
                 <RoleBadge role={user.role} />
                 {user.verified && <VerifiedBadge />}
+                <TrustBadgeRow badges={trustBadgesFor(user, {
+              projectsOwned: ownedProjects,
+              avgRating,
+              reviewCount
+            })} />
                 {avgRating !== null && avgRating !== undefined && <StarRating value={avgRating} count={reviewCount} />}
                 {user.location && <span className="flex items-center gap-1 text-sm text-slate-500">
                     <MapPin className="w-3.5 h-3.5" />{user.location}
@@ -742,87 +1337,108 @@ function ProfileView({
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 space-y-5">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <h3 className="font-bold text-slate-900 mb-3">About</h3>
-            <p className="text-sm text-slate-600 leading-relaxed">{user.bio || "No bio provided yet."}</p>
-          </div>
-          {user.role === "startup_founder" && <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-              <h3 className="font-bold text-slate-900 mb-4">Company Details</h3>
-              <div className="space-y-3">
-                <InfoRow icon={<Building2 className="w-4 h-4 text-blue-500" />} text={user.company} />
-                {user.companyDetails?.founded && <InfoRow icon={<Calendar className="w-4 h-4 text-slate-400" />} text={`Founded ${user.companyDetails.founded}`} />}
-                {user.companyDetails?.headquarters && <InfoRow icon={<MapPin className="w-4 h-4 text-slate-400" />} text={`HQ: ${user.companyDetails.headquarters}`} />}
-                {user.companyDetails?.teamSize && <InfoRow icon={<Users className="w-4 h-4 text-slate-400" />} text={user.companyDetails.teamSize} />}
-                {user.companyDetails?.registrationNumber && <InfoRow icon={<ShieldCheck className="w-4 h-4 text-emerald-500" />} text={`Reg. No: ${user.companyDetails.registrationNumber}`} />}
-                {user.fundingStage && <InfoRow icon={<TrendingUp className="w-4 h-4 text-violet-500" />} text={`${user.fundingStage} stage`} />}
-                {user.website && <InfoRow icon={<Globe className="w-4 h-4 text-slate-400" />} text={user.website} accent />}
-                {!user.companyDetails?.founded && !user.companyDetails?.headquarters && !user.companyDetails?.teamSize && !user.companyDetails?.registrationNumber && <p className="text-xs text-slate-400">No additional company details added yet.</p>}
-              </div>
-            </div>}
-          {user.skills.length > 0 && <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-              <h3 className="font-bold text-slate-900 mb-3">Skills & Expertise</h3>
-              <div className="flex flex-wrap gap-2">
-                {user.skills.map(s => <span key={s} className="px-3 py-1.5 bg-blue-50 text-blue-800 rounded-xl text-sm font-medium">{s}</span>)}
-              </div>
-            </div>}
-          {user.industry.length > 0 && <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-              <h3 className="font-bold text-slate-900 mb-3">Industries</h3>
-              <div className="flex flex-wrap gap-2">
-                {user.industry.map(i => <span key={i} className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-sm">{i}</span>)}
-              </div>
-            </div>}
-        </div>
-
-        <div className="space-y-5">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <h3 className="font-bold text-slate-900 mb-4">Details</h3>
-            <div className="space-y-3">
-              <InfoRow icon={<Building2 className="w-4 h-4 text-slate-400" />} text={user.company} />
-              {user.fundingStage && <InfoRow icon={<TrendingUp className="w-4 h-4 text-violet-500" />} text={`${user.fundingStage} stage`} />}
-              {user.investmentRange && <InfoRow icon={<Wallet className="w-4 h-4 text-emerald-500" />} text={user.investmentRange} />}
-              {user.portfolioCompanies !== undefined && <InfoRow icon={<Briefcase className="w-4 h-4 text-slate-400" />} text={`${user.portfolioCompanies} portfolio companies`} />}
-              {user.hourlyRate && <InfoRow icon={<DollarSign className="w-4 h-4 text-amber-500" />} text={user.hourlyRate} />}
-              {user.availableFor && <InfoRow icon={<CheckCircle className="w-4 h-4 text-emerald-500" />} text={user.availableFor} />}
-              {user.website && <InfoRow icon={<Globe className="w-4 h-4 text-slate-400" />} text={user.website} accent />}
-              {user.linkedin && <InfoRow icon={<Link2 className="w-4 h-4 text-slate-400" />} text="LinkedIn Profile" accent />}
-              <InfoRow icon={<Calendar className="w-4 h-4 text-slate-300" />} text={`Joined ${new Date(user.joinedDate).toLocaleDateString([], {
+      {/* Band 1 — the three short fact cards, level with one another */}
+      <div className={"grid gap-5 mb-5 " + (isOwnProfile ? "md:grid-cols-2 lg:grid-cols-3" : "md:grid-cols-2")}>
+        {isOwnProfile && <ProfileStrengthCard user={user} onEdit={onEdit} />}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <h3 className="font-bold text-slate-900 mb-4">Details</h3>
+          <div className="space-y-3">
+            {user.company && <InfoRow icon={<Building2 className="w-4 h-4 text-slate-400" />} text={user.company} />}
+            {user.fundingStage && <InfoRow icon={<TrendingUp className="w-4 h-4 text-violet-500" />} text={`${user.fundingStage} stage`} />}
+            {user.investmentRange && <InfoRow icon={<Wallet className="w-4 h-4 text-emerald-500" />} text={user.investmentRange} />}
+            {user.portfolioCompanies !== undefined && <InfoRow icon={<Briefcase className="w-4 h-4 text-slate-400" />} text={`${user.portfolioCompanies} portfolio companies`} />}
+            {user.hourlyRate && <InfoRow icon={<DollarSign className="w-4 h-4 text-amber-500" />} text={user.hourlyRate} />}
+            {user.availableFor && <InfoRow icon={<CheckCircle className="w-4 h-4 text-emerald-500" />} text={user.availableFor} />}
+            {user.website && <InfoRow icon={<Globe className="w-4 h-4 text-slate-400" />} text={user.website} accent href={user.website} />}
+            {user.linkedin && <InfoRow icon={<Link2 className="w-4 h-4 text-slate-400" />} text="LinkedIn Profile" accent href={user.linkedin} />}
+            <InfoRow icon={<Calendar className="w-4 h-4 text-slate-300" />} text={`Joined ${new Date(user.joinedDate).toLocaleDateString([], {
               month: "long",
               year: "numeric"
             })}`} muted />
-            </div>
           </div>
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <h3 className="font-bold text-slate-900 mb-4">Network</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="text-center bg-slate-50 rounded-xl py-3">
-                <div className="text-xl font-bold text-slate-900">{user.connections.length}</div>
-                <div className="text-xs text-slate-500">Connections</div>
-              </div>
-              <div className="text-center bg-slate-50 rounded-xl py-3">
-                <div className="text-xl font-bold text-slate-900">{user.experience?.replace(" years", "") || "—"}</div>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <h3 className="font-bold text-slate-900 mb-4">Network</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="text-center bg-slate-50 rounded-xl py-3">
+              <div className="text-xl font-bold text-slate-900">{user.connections.length}</div>
+              <div className="text-xs text-slate-500">Connections</div>
+            </div>
+            {user.experience && <div className="text-center bg-slate-50 rounded-xl py-3">
+                <div className="text-xl font-bold text-slate-900">{user.experience?.replace(" years", "")}</div>
                 <div className="text-xs text-slate-500">Yrs Exp.</div>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-slate-900">Ratings & Reviews</h3>
-              {avgRating !== null && avgRating !== undefined && <StarRating value={avgRating} count={reviewCount} />}
-            </div>
-            {reviewsList.length === 0 ? <p className="text-xs text-slate-400">No reviews yet — reviews appear here after a collaboration.</p> : <div className="space-y-3 overflow-y-auto" style={{
-            maxHeight: "18rem"
-          }}>
-                {reviewsList.slice().reverse().map((r, idx) => <div key={r.id} className={idx < reviewsList.length - 1 ? "border-b border-slate-50 pb-3" : ""}>
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-xs font-semibold text-slate-800">{r.fromName}</span>
-                      <StarRating value={r.rating} showValue={false} />
-                    </div>
-                    <p className="text-xs text-slate-500 leading-relaxed">{r.comment}</p>
-                  </div>)}
+              </div>}
+            {followingCount !== undefined && <div className="text-center bg-slate-50 rounded-xl py-3">
+                <div className="text-xl font-bold text-slate-900">{followingCount}</div>
+                <div className="text-xs text-slate-500">Following</div>
+              </div>}
+            {followerCount !== undefined && <div className="text-center bg-slate-50 rounded-xl py-3">
+                <div className="text-xl font-bold text-slate-900">{followerCount}</div>
+                <div className="text-xs text-slate-500">Followers</div>
               </div>}
           </div>
+        </div>
+      </div>
+
+      {/* Band 2 — the bio with the two chip lists beside it */}
+      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+        <div className={"bg-white rounded-2xl border border-slate-100 shadow-sm p-5 " + (hasChips ? "lg:col-span-2" : "lg:col-span-3")}>
+          <h3 className="font-bold text-slate-900 mb-3">About</h3>
+          <p className="text-sm text-slate-600 leading-relaxed">{user.bio || "No bio provided yet."}</p>
+        </div>
+        {hasChips && <div className="space-y-5">
+            {user.skills.length > 0 && <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <h3 className="font-bold text-slate-900 mb-3">Skills & Expertise</h3>
+                <div className="flex flex-wrap gap-2">
+                  {user.skills.map(s => <span key={s} className="px-3 py-1.5 bg-blue-50 text-blue-800 rounded-xl text-sm font-medium">{s}</span>)}
+                </div>
+              </div>}
+            {user.industry.length > 0 && <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <h3 className="font-bold text-slate-900 mb-3">Industries</h3>
+                <div className="flex flex-wrap gap-2">
+                  {user.industry.map(i => <span key={i} className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-sm">{i}</span>)}
+                </div>
+              </div>}
+          </div>}
+      </div>
+
+      {/* Band 3 — history, two columns only when both halves have rows to show */}
+      {(expRows.length > 0 || eduRows.length > 0) && <div className={"grid gap-5 mb-5 " + (expRows.length > 0 && eduRows.length > 0 ? "md:grid-cols-2" : "")}>
+          {expRows.length > 0 && <TimelineCard title="Experience" icon={<Briefcase className="w-4 h-4 text-blue-500" />} rows={user.experienceList} head="role" sub="company" />}
+          {eduRows.length > 0 && <TimelineCard title="Education" icon={<GraduationCap className="w-4 h-4 text-violet-500" />} rows={user.education} head="school" sub="degree" />}
+        </div>}
+
+      {/* Band 4 — company facts beside the reviews */}
+      <div className={"grid gap-5 " + (isFounder ? "md:grid-cols-2" : "")}>
+        {isFounder && <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <h3 className="font-bold text-slate-900 mb-4">Company Details</h3>
+            <div className="space-y-3">
+              <InfoRow icon={<Building2 className="w-4 h-4 text-blue-500" />} text={user.company} />
+              {user.companyDetails?.founded && <InfoRow icon={<Calendar className="w-4 h-4 text-slate-400" />} text={`Founded ${user.companyDetails.founded}`} />}
+              {user.companyDetails?.headquarters && <InfoRow icon={<MapPin className="w-4 h-4 text-slate-400" />} text={`HQ: ${user.companyDetails.headquarters}`} />}
+              {user.companyDetails?.teamSize && <InfoRow icon={<Users className="w-4 h-4 text-slate-400" />} text={user.companyDetails.teamSize} />}
+              {user.companyDetails?.registrationNumber && <InfoRow icon={<ShieldCheck className="w-4 h-4 text-emerald-500" />} text={`Reg. No: ${user.companyDetails.registrationNumber}`} />}
+              {user.fundingStage && <InfoRow icon={<TrendingUp className="w-4 h-4 text-violet-500" />} text={`${user.fundingStage} stage`} />}
+              {user.website && <InfoRow icon={<Globe className="w-4 h-4 text-slate-400" />} text={user.website} accent />}
+              {!user.companyDetails?.founded && !user.companyDetails?.headquarters && !user.companyDetails?.teamSize && !user.companyDetails?.registrationNumber && <p className="text-xs text-slate-400">No additional company details added yet.</p>}
+            </div>
+          </div>}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-slate-900">Ratings & Reviews</h3>
+            {avgRating !== null && avgRating !== undefined && <StarRating value={avgRating} count={reviewCount} />}
+          </div>
+          {reviewsList.length === 0 ? <p className="text-xs text-slate-400">No reviews yet — reviews appear here after a collaboration.</p> : <div className="space-y-3 overflow-y-auto" style={{
+            maxHeight: "18rem"
+          }}>
+              {reviewsList.slice().reverse().map((r, idx) => <div key={r.id} className={idx < reviewsList.length - 1 ? "border-b border-slate-50 pb-3" : ""}>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-xs font-semibold text-slate-800">{r.fromName}</span>
+                    <StarRating value={r.rating} showValue={false} />
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">{r.comment}</p>
+                </div>)}
+            </div>}
         </div>
       </div>
     </div>;
@@ -831,11 +1447,19 @@ function InfoRow({
   icon,
   text,
   accent,
-  muted
+  muted,
+  href
 }) {
-  return <div className="flex items-center gap-2.5 text-sm">
+  const body = <>
       <span className="flex-shrink-0">{icon}</span>
       <span className={muted ? "text-slate-400 text-xs" : accent ? "text-blue-700" : "text-slate-600"}>{text}</span>
+    </>;
+  // A row that points somewhere is a real link; the rest stay plain text.
+  if (href) return <a href={normalizeLink(href)} target="_blank" rel="noreferrer" title={href} className="flex items-center gap-2.5 text-sm hover:underline">
+      {body}
+    </a>;
+  return <div className="flex items-center gap-2.5 text-sm">
+      {body}
     </div>;
 }
 
@@ -946,6 +1570,47 @@ function buildFreelanceAgreementContent({ freelancer, client, offer, details }) 
 }
 
 // ======================== MAIN APP ========================
+// The second factor, rendered the same way on the sign-in card and inside the
+// provider window: one question, a 6-digit answer, and the way back out.
+
+function TwoFactorPanel({
+  pending,
+  code,
+  setCode,
+  onSubmit,
+  onResend,
+  onBack,
+  backLabel = "Back",
+  busy,
+  error
+}) {
+  const channel = CHANNEL_LABELS[pending?.method] || "Email";
+  return <form onSubmit={onSubmit}>
+      <h2 className="gs-title">2-Step Verification</h2>
+      <p className="gs-sub">
+        {pending?.dest ? <>Enter the 6-digit code we sent by {channel} to <strong>{pending.dest}</strong>.</> : <>This account has 2-Step Verification switched on, so your password is only the first half.</>}
+      </p>
+      <div className="gs-field">
+        <label className="gs-label">Your 6-digit code</label>
+        <input className="gs-input gs-otp" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/[^\d]/g, "").slice(0, 6))} placeholder="000000" />
+      </div>
+      {pending?.devCode && <div className="gs-note mt-3">
+          <span>{`No code provider is connected to this server, so the code is shown here: `}</span>
+          <strong>{pending.devCode}</strong>
+          <span>{` — it is also written to the delivery log.`}</span>
+        </div>}
+      {error && <p className="gs-error">{error}</p>}
+      <div className="flex items-center gap-4 mt-4">
+        <button type="button" onClick={onResend} disabled={busy} className="gs-link">Try another code</button>
+        <span className="text-[11px] text-slate-400">Codes expire in 10 minutes and work once.</span>
+      </div>
+      <div className="gs-foot">
+        <button type="button" onClick={onBack} className="gs-btn">{backLabel}</button>
+        <button type="submit" disabled={busy || code.length !== 6} className="gs-btn gs-primary">{busy ? "Checking…" : "Next"}</button>
+      </div>
+    </form>;
+}
+
 export default function App() {
   const [users, setUsers] = useState(initialUsers);
   const [messages, setMessages] = useState(initialMessages);
@@ -965,6 +1630,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState("login");
   const [viewingUserId, setViewingUserId] = useState(null);
+  const [viewingProjectId, setViewingProjectId] = useState(null);
   const [activeConvoId, setActiveConvoId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [lang, setLang] = useState(() => localStorage.getItem("vl_lang") || "en");
@@ -980,11 +1646,60 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [authPending, setAuthPending] = useState(false);
+  // ---- Password recovery + session management (all additive) ----
+  // The sign-in card keeps its normal form; recovery opens as an overlay panel,
+  // exactly like the OAuth consent screen below it, so nothing existing moves.
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryStep, setRecoveryStep] = useState("email"); // email -> reset -> done
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
+  const [recoveryError, setRecoveryError] = useState("");
+  const [recoveryPending, setRecoveryPending] = useState(false);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [security, setSecurity] = useState(null); // { current, sessions[], activity[] }
+  const [securityError, setSecurityError] = useState("");
+  const [securityNote, setSecurityNote] = useState("");
+  const [securitySignedOut, setSecuritySignedOut] = useState(0);
+  const [securityBusy, setSecurityBusy] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNext, setPwNext] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  // ---- Two-step verification settings + outward alert channels (additive) ----
+  const [tf, setTf] = useState(null); // { enabled, method, dest, phone, availability }
+  const [tfBusy, setTfBusy] = useState(false);
+  const [tfError, setTfError] = useState("");
+  const [tfNote, setTfNote] = useState("");
+  const [tfMethod, setTfMethod] = useState("email");
+  const [tfPhone, setTfPhone] = useState("");
+  const [tfPassword, setTfPassword] = useState("");
+  const [tfChallenge, setTfChallenge] = useState(null); // { challengeId, dest, method, devCode }
+  const [tfCode, setTfCode] = useState("");
+  const [alerts, setAlerts] = useState(null); // { email, phone, channels, availability }
+  const [alertBusy, setAlertBusy] = useState(false);
+  const [alertError, setAlertError] = useState("");
+  const [alertNote, setAlertNote] = useState("");
+  const [myAlerts, setMyAlerts] = useState(null);
+  const [outbox, setOutbox] = useState(null); // { outbox[], counts, availability }
+  const [invitingWebinarId, setInvitingWebinarId] = useState("");
   const [oauthModalOpen, setOauthModalOpen] = useState(false);
   const [oauthEmail, setOauthEmail] = useState("");
   const [oauthName, setOauthName] = useState("");
   const [oauthRole, setOauthRole] = useState("entrepreneur");
   const [oauthError, setOauthError] = useState("");
+  // ---- Two-step sign-in (all additive) ----
+  // The same card asks one question at a time — address, then password, then a
+  // code if that account has two-step verification — and a real password sign-in
+  // and a provider sign-in both land in the same session afterwards.
+  const [signInStep, setSignInStep] = useState("identifier"); // identifier -> password -> code
+  const [pending2fa, setPending2fa] = useState(null); // { challengeId, method, dest, devCode, error }
+  const [otpCode, setOtpCode] = useState("");
+  const [oauthStep, setOauthStep] = useState("choose"); // choose -> code
+  const [savedAccounts, setSavedAccounts] = useState(loadSavedAccounts);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestAt, setSuggestAt] = useState(-1);
+  const [pwVisible, setPwVisible] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [patentBotOpen, setPatentBotOpen] = useState(false);
   const [patentBotProjectId, setPatentBotProjectId] = useState(null);
@@ -993,6 +1708,15 @@ export default function App() {
   const [patentBotInput, setPatentBotInput] = useState("");
   const [patentBotBusy, setPatentBotBusy] = useState(false);
   const patentBotEndRef = useRef(null);
+  // ---- Pitch intelligence + patent verification report (all additive) ----
+  const [pitchReview, setPitchReview] = useState(null); // { projectId, data }
+  const [pitchBusy, setPitchBusy] = useState(false);
+  const [projectSummary, setProjectSummary] = useState(null);
+  const [summaryBusy, setSummaryBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [noveltyReport, setNoveltyReport] = useState(null); // { projectId, data }
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [regForm, setRegForm] = useState({
     name: "",
     email: "",
@@ -1027,12 +1751,29 @@ export default function App() {
   const [projectStatusFilter, setProjectStatusFilter] = useState("all");
   const [projectTypeFilter, setProjectTypeFilter] = useState("all");
   const [projectSort, setProjectSort] = useState("newest");
+  // ---- Requirements page: industry sections + a separate proposals section ----
+  const [reqSearch, setReqSearch] = useState("");
+  const [reqIndustryFilter, setReqIndustryFilter] = useState("all");
+  const [reqShow, setReqShow] = useState("all"); // all | requirements | proposals
+  const [reqProposalStatus, setReqProposalStatus] = useState("all");
+  // ---- Funding tracker, watchlist and side-by-side comparison (all additive) ----
+  const [watchlist, setWatchlist] = useState([]);
+  const [fundingStageFilter, setFundingStageFilter] = useState("all");
+  const [fundingSort, setFundingSort] = useState("gap");
+  const [compareIds, setCompareIds] = useState([]);
+  const [matchSectorFilter, setMatchSectorFilter] = useState("all");
   const [reviewTargetId, setReviewTargetId] = useState(null);
   const [reviewForm, setReviewForm] = useState({
     rating: 5,
     comment: ""
   });
   const [verifyMessage, setVerifyMessage] = useState("");
+  // Which account panel a brand-new profile shows — the four of them are stacked
+  // on an established account and tabbed on a new one, so the setup screens stay
+  // inside the first viewport.
+  const [profilePanelTab, setProfilePanelTab] = useState("verification");
+  // The sign-in log grows with every visit, so it starts short and opens on demand.
+  const [showAllActivity, setShowAllActivity] = useState(false);
   const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [newMessage, setNewMessage] = useState("");
@@ -1166,6 +1907,7 @@ export default function App() {
     if (state.helpOffers) setHelpOffers(state.helpOffers);
     if (state.reviews) setReviews(state.reviews);
     if (state.recentlyAccessed) setRecentlyAccessed(state.recentlyAccessed);
+    if (state.watchlist) setWatchlist(state.watchlist);
     setDataLoaded(true);
   }
 
@@ -1175,6 +1917,15 @@ export default function App() {
     let cancelled = false;
     const oauthFailure = takeOauthErrorFromUrl(); // a real-Google redirect that came back without a token
     if (oauthFailure) setLoginError(oauthFailure);
+    // A provider sign-in for a two-step account returns without a token and with
+    // ?oauth_2fa=<challengeId>: the code step continues where the provider left off.
+    const gated = takeOauthTwoFactorFromUrl();
+    if (gated && gated.challengeId) {
+      setToken("");
+      setPending2fa({ ...gated, error: "" });
+      setSignInStep("code");
+      return;
+    }
     const freshOauthToken = takeOauthTokenFromUrl(); // picks up ?oauth_token=<jwt> after a Google redirect
     if (!freshOauthToken) {
       setToken(""); // never auto-login from a previously stored session
@@ -1213,6 +1964,7 @@ export default function App() {
   useEffect(() => { if (dataLoaded) saveCollection("helpOffers", helpOffers); }, [helpOffers, dataLoaded]);
   useEffect(() => { if (dataLoaded) saveCollection("reviews", reviews); }, [reviews, dataLoaded]);
   useEffect(() => { if (dataLoaded) saveCollection("recentlyAccessed", recentlyAccessed); }, [recentlyAccessed, dataLoaded]);
+  useEffect(() => { if (dataLoaded) saveCollection("watchlist", watchlist); }, [watchlist, dataLoaded]);
 
   // Admin dashboard stats (kept with the other top-level hooks so hook order is stable)
   useEffect(() => {
@@ -1255,38 +2007,161 @@ export default function App() {
     }
   }
 
-  async function handleLogin(e) {
+  // ---- Two-step sign-in handlers ----
+  // Step 1 asks only for the address, exactly like a provider page: nothing is
+  // sent to the server yet, so no attempt can be logged against an unknown account.
+  const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  function handleIdentifierSubmit(e) {
     e.preventDefault();
+    const email = loginEmail.trim();
+    if (!EMAIL_SHAPE.test(email)) {
+      setLoginError("Enter a valid email address.");
+      return;
+    }
+    setLoginError("");
+    setPending2fa(null);
+    setSignInStep("password");
+  }
+  function backToIdentifier() {
+    setSignInStep("identifier");
+    setPending2fa(null);
+    setOtpCode("");
+    setLoginError("");
+  }
+  function backToPassword() {
+    setSignInStep("password");
+    setPending2fa(null);
+    setOtpCode("");
+    setLoginError("");
+  }
+
+  // The single path every password entry takes: password first, a code if the
+  // account asks for one, and the browser remembering the address afterwards.
+  async function submitPassword(email, password) {
     setAuthPending(true);
     setLoginError("");
     try {
-      const user = await apiLogin(loginEmail, loginPassword);
+      const res = await apiLogin(email, password);
       setLoginPassword("");
-      await finishAuth(user);
+      if (res.twoFactor) {
+        setPending2fa({ ...res.twoFactor, error: "" });
+        setSignInStep("code");
+        return;
+      }
+      setSignInStep("identifier");
+      setPending2fa(null);
+      setSavedAccounts(rememberSignedInAccount(res.user));
+      await finishAuth(res.user);
     } catch (err) {
       setLoginError(err.message || "Unable to sign in.");
     } finally {
       setAuthPending(false);
     }
   }
-  async function handleDemoLogin(email) {
+  async function handleLogin(e) {
+    e.preventDefault();
+    await submitPassword(loginEmail.trim(), loginPassword);
+  }
+
+  // A remembered address. The build's own sample accounts were seeded with a known
+  // password and finish in one click; any other account still types its own.
+  async function handleSavedAccount(row) {
+    if (!row.demo) {
+      setLoginEmail(row.email);
+      setLoginError("");
+      setPending2fa(null);
+      setSignInStep("password");
+      return;
+    }
+    setLoginEmail(row.email);
+    await submitPassword(row.email, DEMO_PASSWORD);
+  }
+  function handleForgetAccount(email) {
+    setSavedAccounts(forgetSignedInAccount(email));
+  }
+
+  // The remembered addresses are never listed on the sign-in card. They appear
+  // only once the typed start of the email matches one, the way a provider
+  // finishes the address for you.
+  const typedEmail = loginEmail.trim().toLowerCase();
+  const emailSuggestions = !suggestOpen || !typedEmail ? [] : savedAccounts.filter(row => {
+    const email = String(row.email || "").toLowerCase();
+    const name = String(row.name || "").toLowerCase();
+    if (email === typedEmail) return false;
+    return email.startsWith(typedEmail) || email.includes(typedEmail) || name.startsWith(typedEmail);
+  }).slice(0, 5);
+  function pickEmailSuggestion(row) {
+    setSuggestOpen(false);
+    setSuggestAt(-1);
+    setLoginEmail(row.email);
+    handleSavedAccount(row);
+  }
+  function handleEmailKeyDown(e) {
+    if (!emailSuggestions.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSuggestAt(i => (i + 1) % emailSuggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSuggestAt(i => (i <= 0 ? emailSuggestions.length - 1 : i - 1));
+    } else if (e.key === "Enter" && suggestAt >= 0) {
+      e.preventDefault();
+      pickEmailSuggestion(emailSuggestions[Math.min(suggestAt, emailSuggestions.length - 1)]);
+    } else if (e.key === "Escape") {
+      setSuggestOpen(false);
+      setSuggestAt(-1);
+    }
+  }
+
+  async function handleVerifyCode(e) {
+    e.preventDefault();
+    if (!pending2fa?.challengeId) return;
     setAuthPending(true);
-    setLoginError("");
+    const where = oauthStep === "code" ? "oauth" : "card";
+    const setError = message => {
+      if (where === "oauth") setOauthError(message);else setLoginError(message);
+      setPending2fa(p => p ? { ...p, error: message } : p);
+    };
     try {
-      const user = await apiLogin(email, "123");
-      await finishAuth(user);
-    } catch {
-      setLoginError("Demo account unavailable.");
+      if (where === "oauth") setError("");setOauthError("");
+      const res = await apiVerifyTwoFactor(pending2fa.challengeId, otpCode);
+      if (res.twoFactor) {
+        setPending2fa({ ...res.twoFactor, error: "" });
+        return;
+      }
+      setPending2fa(null);
+      setOtpCode("");
+      setSignInStep("identifier");
+      setOauthStep("choose");
+      setOauthModalOpen(false);
+      setSavedAccounts(rememberSignedInAccount(res.user));
+      await finishAuth(res.user);
+    } catch (err) {
+      setError(err.message || "That code did not verify.");
+    } finally {
+      setAuthPending(false);
+    }
+  }
+  async function handleResendCode() {
+    if (!pending2fa?.challengeId) return;
+    setAuthPending(true);
+    try {
+      const fresh = await apiResendTwoFactor(pending2fa.challengeId);
+      setPending2fa({ ...fresh, error: "" });
+      setOtpCode("");
+    } catch (err) {
+      setPending2fa(p => p ? { ...p, error: err.message || "Could not send another code." } : p);
     } finally {
       setAuthPending(false);
     }
   }
 
-  // ---- Google OAuth sign-in ----
+  // ---- Provider (Google) sign-in ----
   // With GOOGLE_CLIENT_ID configured the backend redirects to real Google;
-  // otherwise the built-in demo provider renders the consent modal below.
+  // otherwise the built-in demo provider renders the chooser below.
   function handleGoogleSignIn() {
     setOauthError("");
+    setOauthStep("choose");
     startGoogleLogin().then(res => {
       if (res?.demo) {
         const known = DEMO_ACCOUNTS.find(d => d.email.toLowerCase() === loginEmail.trim().toLowerCase());
@@ -1307,14 +2182,320 @@ export default function App() {
     setOauthError("");
     try {
       const known = DEMO_ACCOUNTS.find(d => d.email.toLowerCase() === email);
-      const user = await apiOauthDemo(email, known ? known.name : oauthName.trim(), known ? known.role : oauthRole);
+      const res = await apiOauthDemo(email, known ? known.name : oauthName.trim(), known ? known.role : oauthRole);
+      if (res.twoFactor) {
+        // The provider accepted the identity; the account's own second factor still applies.
+        setPending2fa({ ...res.twoFactor, error: "" });
+        setOauthStep("code");
+        setOtpCode("");
+        return;
+      }
       setOauthModalOpen(false);
-      await finishAuth(user);
+      setOauthStep("choose");
+      setSavedAccounts(rememberSignedInAccount(res.user));
+      await finishAuth(res.user);
     } catch (err) {
       setOauthError(err.message || "Google sign-in failed.");
     } finally {
       setAuthPending(false);
     }
+  }
+
+  // Leaving the provider window always drops its second factor too, so the next
+  // open starts on the chooser rather than a stale code screen.
+  function closeOauth() {
+    setOauthModalOpen(false);
+    setOauthStep("choose");
+    setOauthError("");
+    if (signInStep === "code") {
+      setSignInStep("identifier");
+      setPending2fa(null);
+      setOtpCode("");
+    }
+  }
+  function backToChooser() {
+    setOauthStep("choose");
+    setPending2fa(null);
+    setOtpCode("");
+    setOauthError("");
+  }
+
+  // ---- Password recovery: an overlay panel on the sign-in screen ----
+  function openRecovery() {
+    setRecoveryOpen(true);
+    setRecoveryStep("email");
+    setRecoveryEmail(loginEmail.trim());
+    setRecoveryCode("");
+    setRecoveryError("");
+    setRecoveryMessage("");
+    setResetPassword("");
+    setResetConfirm("");
+  }
+  function closeRecovery() {
+    setRecoveryOpen(false);
+    setRecoveryStep("email");
+    setRecoveryError("");
+    setRecoveryMessage("");
+    setResetPassword("");
+    setResetConfirm("");
+  }
+  async function handleRecoveryRequest(e) {
+    e.preventDefault();
+    const email = recoveryEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      setRecoveryError("Enter a valid email address.");
+      return;
+    }
+    setRecoveryPending(true);
+    setRecoveryError("");
+    try {
+      const data = await apiForgotPassword(email);
+      setRecoveryMessage(data.message || "");
+      // No mail provider is wired up in this build, so outside production the
+      // backend returns the code and the panel shows it instead of an inbox.
+      if (data.resetCode) setRecoveryCode(data.resetCode);
+      setRecoveryStep("code");
+    } catch (err) {
+      setRecoveryError(err.message || "Could not start the password reset.");
+    } finally {
+      setRecoveryPending(false);
+    }
+  }
+  async function handleRecoveryReset(e) {
+    e.preventDefault();
+    if (!recoveryCode.trim()) {
+      setRecoveryError("Enter the reset code.");
+      return;
+    }
+    if (resetPassword !== resetConfirm) {
+      setRecoveryError("The two new passwords do not match.");
+      return;
+    }
+    setRecoveryPending(true);
+    setRecoveryError("");
+    try {
+      const data = await apiResetPassword(recoveryCode.trim(), resetPassword);
+      setRecoveryMessage(data.message || "Your password has been updated. Please sign in again.");
+      setRecoveryStep("done");
+      setRecoveryCode("");
+      setResetPassword("");
+      setResetConfirm("");
+      setLoginEmail(recoveryEmail.trim());
+      // The reset closes on the password step, with the address still filled in.
+      if (recoveryEmail.includes("@")) setSignInStep("password");
+    } catch (err) {
+      setRecoveryError(err.message || "Could not reset the password.");
+    } finally {
+      setRecoveryPending(false);
+    }
+  }
+
+  // ---- Security & sessions (profile screen) ----
+  function refreshSecurity() {
+    if (!getToken()) return;
+    apiSessions().then(data => {
+      setSecurity(data);
+      setSecurityError("");
+    }).catch(err => setSecurityError(err.message || "Session details unavailable."));
+  }
+  useEffect(() => {
+    if (!currentUser || view !== "profile") return;
+    refreshSecurity();
+  }, [currentUser, view]);
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    setSecurityNote("");
+    setSecuritySignedOut(0);
+    setSecurityError("");
+    if (pwNext !== pwConfirm) {
+      setSecurityError("The new passwords do not match.");
+      return;
+    }
+    setSecurityBusy(true);
+    try {
+      const data = await apiChangePassword(pwCurrent, pwNext);
+      setSecurityNote(data.message || "Password changed.");
+      setSecuritySignedOut(Number(data.signedOut) || 0);
+      setPwCurrent("");
+      setPwNext("");
+      setPwConfirm("");
+      refreshSecurity();
+    } catch (err) {
+      setSecurityError(err.message || "Could not change your password.");
+    } finally {
+      setSecurityBusy(false);
+    }
+  }
+  async function handleRevokeSession(jti) {
+    setSecurityError("");
+    setSecurityNote("");
+    try {
+      await apiRevokeSession(jti);
+      // Revoking the session you are using signs this device out, as expected.
+      if (jti === (security?.current || "")) {
+        handleLogout();
+        return;
+      }
+      refreshSecurity();
+    } catch (err) {
+      setSecurityError(err.message || "Could not sign out that session.");
+    }
+  }
+  async function handleRevokeOtherSessions() {
+    setSecurityError("");
+    try {
+      const data = await apiRevokeOtherSessions();
+      setSecurityNote("Every other device has been signed out.");
+      setSecuritySignedOut(Number(data.revoked) || 0);
+      refreshSecurity();
+    } catch (err) {
+      setSecurityError(err.message || "Could not sign out the other sessions.");
+    }
+  }
+
+  // ---- Two-step verification + outward alerts (additive) ----
+  // Both read the account's own security settings; neither changes how any
+  // existing feature behaves.
+  function refreshAlerts() {
+    if (!getToken()) return;
+    apiTwoFactorStatus().then(data => {
+      setTf(data);
+      setTfMethod(data?.method || "email");
+      setTfPhone(data?.phone || "");
+    }).catch(() => setTf(null));
+    apiAlertChannels().then(data => {
+      setAlerts(data);
+      setTfPhone(prev => prev || data?.phone || "");
+    }).catch(() => setAlerts(null));
+    apiMyAlerts().then(data => setMyAlerts(data.alerts || [])).catch(() => setMyAlerts([]));
+  }
+  useEffect(() => {
+    if (!currentUser || view !== "profile") return;
+    refreshAlerts();
+  }, [currentUser, view]);
+
+  async function handleEnableTwoFactor(e) {
+    e.preventDefault();
+    setTfError("");
+    setTfNote("");
+    if (!tfPassword) {
+      setTfError("Confirm your current password first — switching 2-step on is a security change.");
+      return;
+    }
+    setTfBusy(true);
+    try {
+      const data = await apiEnableTwoFactor({ password: tfPassword, method: tfMethod, phone: tfPhone });
+      setTfChallenge(data);
+      setTfCode("");
+      setTfPassword("");
+      setTfNote(data.message || "");
+    } catch (err) {
+      setTfError(err.message || "Could not start two-step verification.");
+    } finally {
+      setTfBusy(false);
+    }
+  }
+  async function handleResendTfCode() {
+    if (!tfChallenge?.challengeId) return;
+    setTfBusy(true);
+    setTfError("");
+    try {
+      setTfChallenge(await apiResendTwoFactor(tfChallenge.challengeId));
+      setTfCode("");
+    } catch (err) {
+      setTfError(err.message || "Could not send another code.");
+    } finally {
+      setTfBusy(false);
+    }
+  }
+  async function handleConfirmTwoFactor(e) {
+    e.preventDefault();
+    if (!tfChallenge?.challengeId) return;
+    setTfError("");
+    setTfBusy(true);
+    try {
+      const data = await apiConfirmTwoFactor(tfChallenge.challengeId, tfCode);
+      setTfChallenge(null);
+      setTfCode("");
+      setTfNote(data.message || "Two-step verification is on.");
+      refreshAlerts();
+    } catch (err) {
+      setTfError(err.message || "That code did not verify.");
+    } finally {
+      setTfBusy(false);
+    }
+  }
+  async function handleDisableTwoFactor(e) {
+    e.preventDefault();
+    if (!tfPassword) {
+      setTfError("Enter your current password to switch two-step verification off.");
+      return;
+    }
+    setTfError("");
+    setTfBusy(true);
+    try {
+      const data = await apiDisableTwoFactor(tfPassword);
+      setTfNote(data.message || "Two-step verification is off.");
+      setTfPassword("");
+      setTfChallenge(null);
+      refreshAlerts();
+    } catch (err) {
+      setTfError(err.message || "Could not change two-step verification.");
+    } finally {
+      setTfBusy(false);
+    }
+  }
+  function cancelTfSetup() {
+    setTfChallenge(null);
+    setTfCode("");
+    setTfError("");
+    setTfNote("");
+  }
+  function toggleAlertChannel(key) {
+    setAlerts(prev => prev ? {
+      ...prev,
+      channels: { ...prev.channels, [key]: !prev.channels[key] }
+    } : prev);
+  }
+  // An opt-in only counts once it has been proved, so the same call can send a test.
+  async function handleSaveAlertChannels(test) {
+    if (!alerts) return;
+    setAlertError("");
+    setAlertNote("");
+    setAlertBusy(true);
+    try {
+      const data = await apiSaveAlertChannels({ channels: alerts.channels, phone: tfPhone, test: test ? "sign-in-alert" : undefined });
+      const rows = Array.isArray(data.test) ? data.test : [];
+      setAlertNote(rows.length ? `Test: ${rows.map(r => `${r.channel} ${r.status}${r.reason ? ` (${r.reason})` : ""}`).join(", ")}.` : "Alert settings saved.");
+      setAlerts(prev => prev ? { ...prev, channels: data.channels, phone: data.phone } : prev);
+      refreshAlerts();
+    } catch (err) {
+      setAlertError(err.message || "Could not save the alert settings.");
+    } finally {
+      setAlertBusy(false);
+    }
+  }
+  function refreshOutbox() {
+    apiOutbox().then(setOutbox).catch(err => setOutbox({ error: err.message || "Delivery log unavailable." }));
+  }
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "admin" || view !== "admin") return;
+    refreshOutbox();
+  }, [currentUser, view]);
+
+  // Outward copy for something that just happened. The backend rebuilds the
+  // message from the stored record, so this waits for the debounced collection
+  // save to land — and a failure here never undoes the action.
+  function notifyImportant(kind, refId, attempt = 1) {
+    if (!refId || !getToken()) return;
+    setTimeout(() => {
+      apiNotifyImportant(kind, refId).catch(() => {
+        // The debounced save may not have landed yet, so try once more rather
+        // than dropping the notice.
+        if (attempt < 2) notifyImportant(kind, refId, attempt + 1);
+      });
+    }, attempt === 1 ? 1500 : 2500);
   }
 
   async function handleRegister(e) {
@@ -1362,15 +2543,28 @@ export default function App() {
     }
   }
   function handleLogout() {
+    // Tell the backend first so this session is recorded as signed out; the
+    // local behaviour below is exactly the same as before.
+    if (getToken()) apiLogout();
     setToken("");
     setDataLoaded(false);
     setCurrentUser(null);
     setView("login");
     setLoginEmail("");
     setLoginPassword("");
+    setSignInStep("identifier");
+    setPending2fa(null);
+    setOtpCode("");
+    setOauthStep("choose");
+    setOauthModalOpen(false);
     setAdminStats(null);
     setPatentBotOpen(false);
     setPatentBotLog([]);
+    setSecurity(null);
+    setSecurityNote("");
+    setSecurityError("");
+    setSecuritySignedOut(0);
+    closeRecovery();
   }
 
   // ---- Connections ----
@@ -1435,6 +2629,44 @@ export default function App() {
     } : prev);
   }
 
+  // ---- Follow graph (sits alongside connection requests, replaces nothing) ----
+  function toggleFollow(targetId) {
+    if (!latestCu || targetId === latestCu.id) return;
+    const me = latestCu.id;
+    const wasFollowing = (latestCu.following || []).includes(targetId);
+    const add = (list, id) => list.includes(id) ? list : [...list, id];
+    const drop = (list, id) => list.filter(x => x !== id);
+    const apply = u => {
+      if (u.id === me) return {
+        ...u,
+        following: wasFollowing ? drop(u.following || [], targetId) : add(u.following || [], targetId)
+      };
+      if (u.id === targetId) return {
+        ...u,
+        followers: wasFollowing ? drop(u.followers || [], me) : add(u.followers || [], me)
+      };
+      return u;
+    };
+    setUsers(prev => prev.map(apply));
+    setCurrentUser(prev => prev ? apply(prev) : prev);
+  }
+  function removeConnection(targetId) {
+    if (!latestCu) return;
+    const me = latestCu.id;
+    const other = users.find(u => u.id === targetId);
+    const drop = (u, id) => ({
+      ...u,
+      connections: (u.connections || []).filter(x => x !== id)
+    });
+    setUsers(prev => prev.map(u => u.id === me ? drop(u, targetId) : u.id === targetId ? drop(u, me) : u));
+    setCurrentUser(prev => prev ? drop(prev, targetId) : prev);
+    setSuccessNotice({
+      title: "Network updated",
+      text: "Connection removed from",
+      entity: other ? other.name : ""
+    });
+  }
+
   // ---- Messages ----
   function sendMessage() {
     if (!latestCu || !activeConvoId || !newMessage.trim()) return;
@@ -1448,6 +2680,7 @@ export default function App() {
     };
     setMessages(prev => [...prev, msg]);
     setNewMessage("");
+    notifyImportant("message-received", msg.id);
   }
   function markConversationRead(withUserId) {
     if (!latestCu) return;
@@ -1507,6 +2740,38 @@ export default function App() {
       tags: ""
     });
     setShowWebinarForm(false);
+    // Members whose requirements, sector or projects fit this webinar are invited
+    // out of the website — by email, and by SMS/WhatsApp if they opted in.
+    apiWebinarInvites({ webinar: w }).then(data => {
+      const matched = Number(data.matched) || 0;
+      if (!matched) return;
+      setSuccessNotice({
+        title: t("Webinar invitations"),
+        text: <>{matched} {t("members whose requirements fit were invited to")}</>,
+        entity: w.title
+      });
+      setTimeout(() => setSuccessNotice(""), 6000);
+    }).catch(() => {});
+  }
+  // The backend does the matching against each member's requirements, sector and
+  // projects, and rebuilds the invitation from the stored webinar.
+  async function inviteWebinarMembers(webinar) {
+    setInvitingWebinarId(webinar.id);
+    try {
+      const data = await apiWebinarInvites({ webinarId: webinar.id });
+      const matched = Number(data.matched) || 0;
+      setSuccessNotice({
+        title: t("Webinar invitations"),
+        text: matched ? <>{matched} {t("matched members were invited to")}</> : t("No member matched this webinar yet, so nobody was invited."),
+        entity: matched ? webinar.title : ""
+      });
+      setTimeout(() => setSuccessNotice(""), 6000);
+    } catch (err) {
+      setSuccessNotice({ title: t("Invitations unavailable"), text: err.message || t("Please try again later."), entity: "" });
+      setTimeout(() => setSuccessNotice(""), 6000);
+    } finally {
+      setInvitingWebinarId("");
+    }
   }
   function toggleWebinarRegistration(webinarId) {
     if (!latestCu) return;
@@ -1561,6 +2826,124 @@ export default function App() {
   function getProjectFundingReceived(projectId) {
     return investments.filter(i => i.projectId === projectId).reduce((sum, i) => sum + i.amount, 0);
   }
+
+  // ---- Project page (additive) ----
+  // Opening a project records a visit in the same per-user log the dashboard's
+  // "recently accessed" panel already writes, which is what the analytics card reads.
+  function openProject(projectId) {
+    recordRecentAccess(projectId, "project");
+    setViewingProjectId(projectId);
+    setView("project-detail");
+  }
+  function patchProject(projectId, patch) {
+    setProjects(prev => prev.map(p => p.id === projectId ? {
+      ...p,
+      ...patch
+    } : p));
+  }
+  function notify(title, text, entity) {
+    setSuccessNotice({
+      title,
+      text,
+      entity
+    });
+    setTimeout(() => setSuccessNotice(""), 5000);
+  }
+
+  // ---- Deal watchlist (additive) ----
+  // A watchlist row is only a pointer: userId + projectId + when it was added. It never
+  // touches a connection, a proposal or an investment, so watching a deal is free.
+  const myWatchRows = latestCu ? watchlist.filter(w => w.userId === latestCu.id) : [];
+  const watchedProjectIds = myWatchRows.map(w => w.projectId);
+  function toggleWatch(projectId) {
+    if (!latestCu) return;
+    const proj = projects.find(p => p.id === projectId);
+    if (!proj) return;
+    const mine = watchlist.find(w => w.userId === latestCu.id && w.projectId === projectId);
+    if (mine) {
+      setWatchlist(prev => prev.filter(w => w.id !== mine.id));
+      notify(t("Removed from watchlist"), t("You are no longer tracking"), proj.title);
+      return;
+    }
+    setWatchlist(prev => [...prev, {
+      id: `wl${Date.now()}`,
+      userId: latestCu.id,
+      projectId,
+      addedAt: new Date().toISOString()
+    }]);
+    notify(t("Added to watchlist"), t("Funding updates for"), proj.title);
+  }
+
+  // ---- Side-by-side comparison tray (additive) ----
+  function toggleCompare(projectId) {
+    setCompareIds(prev => prev.includes(projectId) ? prev.filter(x => x !== projectId) : [...prev, projectId].slice(-3));
+  }
+
+  // ---- Explainable match scores (additive) ----
+  // Same inputs always give the same fit %, and every point is one of the reasons below.
+  const matchCtx = {
+    investments,
+    requirements,
+    users,
+    stageOf: lifecycleOf,
+    noveltyOf: p => p.noveltyStatus === "cleared"
+  };
+  function matchBetween(investorId, projectId) {
+    const inv = users.find(u => u.id === investorId);
+    const proj = projects.find(p => p.id === projectId);
+    if (!inv || !proj) return null;
+    return scoreMatch(inv, proj, matchCtx);
+  }
+  function setProjectStage(projectId, stage) {
+    patchProject(projectId, {
+      lifecycle: stage
+    });
+    const label = (LIFECYCLE.find(s => s.key === stage) || {}).label || stage;
+    notify(t("Lifecycle updated"), t("Project moved to"), label);
+  }
+  function editList(projectId, key, fn) {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+    patchProject(projectId, {
+      [key]: fn((project[key] || []).slice())
+    });
+  }
+  const addMilestone = id => editList(id, "milestones", list => [...list, {
+    title: "",
+    note: "",
+    done: false
+  }]);
+  const updateMilestone = (id, idx, patch) => editList(id, "milestones", list => list.map((m, i) => i === idx ? {
+    ...m,
+    ...patch
+  } : m));
+  const removeMilestone = (id, idx) => editList(id, "milestones", list => list.filter((_, i) => i !== idx));
+  const addTeamMember = id => editList(id, "team", list => [...list, {
+    name: "",
+    role: "",
+    note: ""
+  }]);
+  const updateTeamMember = (id, idx, patch) => editList(id, "team", list => list.map((m, i) => i === idx ? {
+    ...m,
+    ...patch
+  } : m));
+  const removeTeamMember = (id, idx) => editList(id, "team", list => list.filter((_, i) => i !== idx));
+  function attachProjectDocument(projectId, file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      editList(projectId, "documents", list => [...list, {
+        name: file.name,
+        size: file.size,
+        type: file.type || "",
+        dataUrl: String(reader.result || ""),
+        at: new Date().toISOString()
+      }]);
+      notify(t("Document added"), t("Attached to this project"), file.name);
+    };
+    reader.readAsDataURL(file);
+  }
+  const removeProjectDocument = (id, idx) => editList(id, "documents", list => list.filter((_, i) => i !== idx));
 
   // ---- Verification / Trust System ----
   function getVerificationChecklist(u) {
@@ -2039,6 +3422,7 @@ export default function App() {
       read: false
     };
     setMessages(prev => [...prev, msg]);
+    notifyImportant("proposal-received", proposal.id);
     setSubmitToRequirementId(null);
     setSubmitProjectId("");
   }
@@ -2119,7 +3503,8 @@ export default function App() {
       createdAt: new Date().toISOString().split("T")[0]
     };
     setAgreements(prev => [...prev, agreement]);
-    setSuccessNotice(`Investment agreement for "${proj?.title || "the project"}" has been created and sent.`);
+    notifyImportant("agreement-made", agreement.id);
+    setSuccessNotice({ title: "Agreement made", text: "Investment agreement created and sent for", entity: proj?.title || "the project" });
     setTimeout(() => setSuccessNotice(""), 6000);
 
     // prompt to schedule a call/meeting with the counterparty
@@ -2223,7 +3608,8 @@ export default function App() {
       createdAt: new Date().toISOString().split("T")[0]
     };
     setAgreements(prev => [...prev, agreement]);
-    setSuccessNotice(`Investment agreement for "${proj?.title || "the project"}" has been created and sent.`);
+    notifyImportant("agreement-made", agreement.id);
+    setSuccessNotice({ title: "Agreement made", text: "Investment agreement created and sent for", entity: proj?.title || "the project" });
     setTimeout(() => setSuccessNotice(""), 6000);
     setScheduleModal({
       investmentId: inv.id,
@@ -2260,6 +3646,7 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
     setMeetings(prev => [...prev, meeting]);
+    notifyImportant("meeting-scheduled", meeting.id);
     const partyB = users.find(u => u.id === scheduleModal.partyBId);
     if (latestCu && partyB) {
       const msg = {
@@ -2315,6 +3702,7 @@ export default function App() {
       read: false
     };
     setMessages(prev => [...prev, msg]);
+    notifyImportant("offer-sent", offer.id);
     setOfferForm({
       title: "",
       description: "",
@@ -2324,7 +3712,7 @@ export default function App() {
     setPendingOfferFile(null);
     if (offerFileInputRef.current) offerFileInputRef.current.value = "";
     setShowOfferForm(false);
-    setSuccessNotice(`${terms.noun} letter sent successfully to ${recipient.name}.`);
+    setSuccessNotice({ title: `${terms.noun} sent`, text: "Letter delivered to", entity: recipient.name });
     setTimeout(() => setSuccessNotice(""), 5000);
   }
   function handleOfferFileChange(e) {
@@ -2384,7 +3772,7 @@ export default function App() {
         createdAt: new Date().toISOString().split("T")[0]
       };
       setAgreements(prev => [...prev, agreement]);
-      setSuccessNotice(`Agreement for "${offer.title}" has been created and sent.`);
+      setSuccessNotice({ title: "Agreement made", text: "Agreement created and sent for", entity: offer.title });
       setTimeout(() => setSuccessNotice(""), 6000);
       const msg = {
         id: `m${Date.now()}`,
@@ -2395,6 +3783,8 @@ export default function App() {
         read: false
       };
       setMessages(prev => [...prev, msg]);
+      notifyImportant("offer-decision", offerId);
+      notifyImportant("agreement-made", agreement.id);
     }
   }
 
@@ -2417,6 +3807,8 @@ export default function App() {
     setPatentBotProjectId(projectId);
     setPatentBotProposalId(proposalId || null);
     setPatentBotLog([]);
+    setNoveltyReport(null);
+    setReportOpen(false);
     setPatentBotOpen(true);
     setTimeout(() => {
       pushBotMsg(`Hello! I'm PatentBot, VentureLink's patent novelty screener.${proj ? ` You asked about "${proj.title}".` : ""}`);
@@ -2447,11 +3839,126 @@ export default function App() {
           const cause = (result.blockedBy || []).map(k => k === "number" ? "the patent number is not a valid filing number" : k === "proof" ? "no proof-of-patent document is attached" : "the claim duplicates work already on the platform").join(" and ");
           setTimeout(() => pushBotMsg(`❌ NOT A VALID PATENT — ${cause || "the screening did not pass"}. This claim is reported as unverified and investing remains blocked until the founder corrects it and I am run again.`), finish);
         }
+        const pid = patentBotProjectId;
+        setTimeout(() => {
+          loadNoveltyReport(pid).then(report => {
+            if (!report) return;
+            const rows = report.priorArt || [];
+            if (!rows.length) {
+              pushBotMsg("Similarity analysis: no other project on the registry shares enough claim language with this one, so nothing is cited as prior art.");
+              return;
+            }
+            rows.slice(0, 3).forEach((r, i) => setTimeout(() => pushBotMsg(`Similarity analysis ${i + 1}/${Math.min(rows.length, 3)}: “${r.title}” — ${r.similarity}% overlap on the ${r.matchedOn}, band: ${r.band}. Shared claim terms: ${r.shared.join(", ") || "none"}.`), 350 * i));
+            setTimeout(() => pushBotMsg(`Overlap is word-set comparison against every registered project: ${report.registry.duplicateAt}%+ is duplicate risk, ${report.registry.reviewAt}%+ needs manual review. Press “Verification report” for the full screening record — you can download or print it.`), 350 * Math.min(rows.length, 3) + 200);
+          });
+        }, finish + 500);
       }, 500);
     }).catch(err => {
       pushBotMsg(`Sorry — the screening service could not run: ${err.message}`);
     }).finally(() => setPatentBotBusy(false));
   }
+  function runPitchReview(projectId) {
+    if (!projectId || pitchBusy) return;
+    setPitchBusy(true);
+    setAiError("");
+    apiPitchReview(projectId).then(data => setPitchReview({
+      projectId,
+      data
+    })).catch(err => setAiError(err.message)).finally(() => setPitchBusy(false));
+  }
+  function runProjectSummary(projectId) {
+    if (!projectId || summaryBusy) return;
+    setSummaryBusy(true);
+    setAiError("");
+    apiProjectSummary(projectId).then(data => setProjectSummary({
+      projectId,
+      data
+    })).catch(err => setAiError(err.message)).finally(() => setSummaryBusy(false));
+  }
+  function loadNoveltyReport(projectId) {
+    if (!projectId) return Promise.resolve(null);
+    if (noveltyReport && noveltyReport.projectId === projectId) return Promise.resolve(noveltyReport.data);
+    setReportBusy(true);
+    return apiNoveltyReport(projectId).then(data => {
+      setNoveltyReport({
+        projectId,
+        data
+      });
+      return data;
+    }).catch(err => {
+      setAiError(err.message);
+      return null;
+    }).finally(() => setReportBusy(false));
+  }
+  function openVerificationReport(projectId) {
+    loadNoveltyReport(projectId).then(data => {
+      if (data) setReportOpen(true);
+    });
+  }
+  function noveltyReportAsText(report) {
+    const lines = [];
+    const push = (label, value) => {
+      if (value !== "" && value != null) lines.push(`${label}: ${value}`);
+    };
+    lines.push("VENTURELINK — PATENT NOVELTY VERIFICATION REPORT");
+    lines.push(report.id);
+    lines.push("");
+    lines.push("SUBJECT");
+    push("Project", report.subject.title);
+    push("Industry", report.subject.industry);
+    push("Founder", report.subject.founder);
+    push("Company", report.subject.company);
+    push("Patent number", report.subject.patentNumber);
+    push("Proof document", report.subject.patentProofName);
+    lines.push("");
+    lines.push("VERDICT");
+    push("Novelty score", `${report.score}/100`);
+    push("Status", String(report.status).toUpperCase());
+    push("Verified", report.verified ? "yes" : "no");
+    if (report.blockedBy.length) push("Blocked by", report.blockedBy.join(", "));
+    lines.push("");
+    lines.push(`PRIOR ART (registry pool of ${report.registry.poolSize} projects, ${report.registry.patentedInPool} patented)`);
+    if (!report.priorArt.length) lines.push("No other registered project shares enough claim language to be cited.");
+    report.priorArt.forEach(r => {
+      lines.push(`- ${r.title} — ${r.similarity}% overlap (${r.matchedOn}, ${r.band})${r.shared.length ? ` — shared terms: ${r.shared.join(", ")}` : ""}`);
+    });
+    lines.push("");
+    lines.push("CHECKS");
+    report.checks.forEach(c => lines.push(`- [${c.result.toUpperCase()}] ${c.label}${c.value ? ` (${c.value})` : ""}${c.note ? ` — ${c.note}` : ""}`));
+    lines.push("");
+    lines.push("SCREENING NOTES");
+    report.reasons.forEach(r => lines.push(`- ${r.text}`));
+    lines.push("");
+    lines.push("LIMITS OF THIS REPORT");
+    report.limits.forEach(l => lines.push(`- ${l}`));
+    lines.push("");
+    lines.push(`Generated ${new Date(report.generatedAt).toLocaleString()} by VentureLink PatentBot.`);
+    return lines.join("\n");
+  }
+  function downloadNoveltyReport() {
+    const report = noveltyReport && noveltyReport.data;
+    if (!report) return;
+    const url = URL.createObjectURL(new Blob([noveltyReportAsText(report)], {
+      type: "text/plain;charset=utf-8"
+    }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${report.id}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function printNoveltyReport() {
+    loadNoveltyReport(noveltyReport && noveltyReport.projectId).then(() => {
+      setTimeout(() => window.print(), 60);
+    });
+  }
+  useEffect(() => {
+    setPitchReview(null);
+    setProjectSummary(null);
+    setAiError("");
+  }, [viewingProjectId]);
   function askPatentBot(text) {
     const q = text.toLowerCase();
     setPatentBotLog(prev => [...prev, { from: "user", text, ts: new Date().toISOString() }]);
@@ -2477,6 +3984,14 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [patentBotOpen]);
+  useEffect(() => {
+    if (!reportOpen) return undefined;
+    const onKey = e => {
+      if (e.key === "Escape") setReportOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [reportOpen]);
 
   // ---- Agreement details prompt ----
   // Whenever an agreement is about to be made (an investment, or accepting an offer
@@ -2869,108 +4384,231 @@ export default function App() {
               </div>
               <p className="text-slate-400">The professional network for building and funding ventures.</p>
             </div>
-            <div className="bg-white rounded-2xl shadow-2xl p-8">
+            {/* Two-step sign-in card: one question per screen — address, then
+                password, then a 6-digit code when that account asks for one. */}
+            <div className="gs-card mx-auto">
               <div className="flex items-start justify-between gap-4 mb-6">
-                <h2 className="text-2xl font-bold text-slate-900">Sign in to your account</h2>
-                {langPicker}
-              </div>
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Email address</label>
-                  <input type="email" autoComplete="off" name="ven-login-email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-900 bg-slate-50 focus:bg-white transition-colors text-sm" placeholder="you@example.com" />
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+                    <Zap className="w-4 h-4 text-white" />
+                  </span>
+                  <span className="text-[13px] font-semibold" style={{
+                color: "#5e636b"
+              }}>VentureLink</span>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Password</label>
-                  <input type="password" autoComplete="new-password" name="ven-login-password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-900 bg-slate-50 focus:bg-white transition-colors text-sm" placeholder="••••••••" />
-                </div>
-                {loginError && <p className="text-rose-600 text-sm font-medium">{loginError}</p>}
-                <button type="submit" disabled={authPending} className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded-xl transition-colors shadow-sm shadow-blue-200 text-sm disabled:opacity-60 disabled:cursor-not-allowed">
-                  {authPending ? "Signing in…" : "Sign in"}
-                </button>
-              </form>
-              <div className="flex items-center gap-3 my-4">
-                <div className="flex-1 h-px bg-slate-100" />
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">or</span>
-                <div className="flex-1 h-px bg-slate-100" />
+                <div className="flex items-center gap-1">{langPicker}<ThemePicker /></div>
               </div>
-              <button type="button" onClick={handleGoogleSignIn} disabled={authPending} className="w-full flex items-center justify-center gap-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold py-3 rounded-xl transition-colors text-sm disabled:opacity-60">
-                <svg className="w-4.5 h-4.5" width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V24H24v8h11.3C33.7 36.4 29.3 40 24 40c-8.8 0-16-7.2-16-16s7.2-16 16-16c4.1 0 7.8 1.6 10.7 4.1l5.7-5.7C36.6 2.9 30.6 0.8 24 0.8 11.2.8.8 11.2.8 24S11.2 47.2 24 47.2 47.2 36.8 47.2 24c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.3 19 12 24 12c3.3 0 6.3 1.3 8.5 3.3l6.1-6.1C34.9 6 29.7 3.8 24 3.8c-7.6 0-14.2 4.3-17.7 10.9z"/><path fill="#4CAF50" d="M24 47.2c5.6 0 10.7-2.1 14.6-5.5l-6.7-5.7c-2.2 1.6-5 2.6-7.9 2.6-5.2 0-9.6-3.4-11.2-8.1l-6.6 5.1C8 41.3 15.3 47.2 24 47.2z"/><path fill="#1976D2" d="M43.6 20.5H42V24H24v8h11.3c-.8 2.2-2.1 4.1-3.8 5.6l6.7 5.7C42.1 44.5 47.2 37 47.2 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
-                Continue with Google
-              </button>
-              <p className="text-center text-sm text-slate-500 mt-6">
-                New to VentureLink?{" "}
-                <button onClick={() => setView("register")} className="text-blue-700 font-bold hover:underline">Create account</button>
-              </p>
-              <div className="mt-6 pt-6 border-t border-slate-100">
-                <p className="text-center text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Demo accounts (password 123)</p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {DEMO_ACCOUNTS.map(d => <button key={d.email} type="button" onClick={() => handleDemoLogin(d.email)} className="px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-colors text-left">
-                      <span className="block truncate">{d.name}</span>
-                      <span className="block text-[10px] font-normal text-slate-400">{ROLE_LABELS[d.role]}</span>
-                    </button>)}
-                </div>
-              </div>
+              {signInStep === "identifier" && <form onSubmit={handleIdentifierSubmit}>
+                  <h2 className="gs-title">Sign in</h2>
+                  <p className="gs-sub">Use your VentureLink account</p>
+                  <div className="gs-field">
+                    <label className="gs-label">Email address</label>
+                    <input type="email" autoComplete="username" name="ven-login-email" autoFocus value={loginEmail} onChange={e => {
+                  setLoginEmail(e.target.value);setSuggestOpen(true);setSuggestAt(-1);
+                }} onFocus={() => setSuggestOpen(true)} onBlur={() => setTimeout(() => setSuggestOpen(false), 140)} onKeyDown={handleEmailKeyDown} role="combobox" aria-expanded={emailSuggestions.length > 0} aria-controls="gs-suggest-list" aria-autocomplete="list" className="gs-input" placeholder="you@example.com" />
+                    {emailSuggestions.length > 0 && <div className="gs-suggest" id="gs-suggest-list" role="listbox">
+                        {emailSuggestions.map((row, i) => <div key={row.email} role="option" aria-selected={i === suggestAt} className={"gs-suggest-item" + (i === suggestAt ? " gs-on" : "")}>
+                            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => pickEmailSuggestion(row)} className="gs-suggest-pick">
+                              <span className={`gs-avatar ${avatarColorForSeed(row.email || row.name)}`}>{getInitials(row.name || row.email)}</span>
+                              <span className="gs-suggest-text">
+                                <span className="gs-row-name">{row.name}</span>
+                                <span className="gs-row-sub">{row.email}</span>
+                              </span>
+                            </button>
+                            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => handleForgetAccount(row.email)} className="gs-saved-x" title={`Forget ${row.name}`} aria-label={`Forget ${row.name}`}>×</button>
+                          </div>)}
+                      </div>}
+                  </div>
+                  {loginError && <p className="gs-error">{loginError}</p>}
+                  <div className="mt-1">
+                    <button type="button" onClick={openRecovery} className="gs-link">Forgot password?</button>
+                  </div>
+                  <div className="gs-foot">
+                    <button type="button" onClick={() => setView("register")} className="gs-link">Create account</button>
+                    <button type="submit" disabled={authPending || !loginEmail.trim()} className="gs-btn gs-primary">Next</button>
+                  </div>
+                  <div className="gs-divider" />
+                  <button type="button" onClick={handleGoogleSignIn} disabled={authPending} className="w-full flex items-center justify-center gap-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold py-3 rounded-xl transition-colors text-sm disabled:opacity-60">
+                    <svg className="w-4.5 h-4.5" width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V24H24v8h11.3C33.7 36.4 29.3 40 24 40c-8.8 0-16-7.2-16-16s7.2-16 16-16c4.1 0 7.8 1.6 10.7 4.1l5.7-5.7C36.6 2.9 30.6 0.8 24 0.8 11.2.8.8 11.2.8 24S11.2 47.2 24 47.2 47.2 36.8 47.2 24c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.3 19 12 24 12c3.3 0 6.3 1.3 8.5 3.3l6.1-6.1C34.9 6 29.7 3.8 24 3.8c-7.6 0-14.2 4.3-17.7 10.9z"/><path fill="#4CAF50" d="M24 47.2c5.6 0 10.7-2.1 14.6-5.5l-6.7-5.7c-2.2 1.6-5 2.6-7.9 2.6-5.2 0-9.6-3.4-11.2-8.1l-6.6 5.1C8 41.3 15.3 47.2 24 47.2z"/><path fill="#1976D2" d="M43.6 20.5H42V24H24v8h11.3c-.8 2.2-2.1 4.1-3.8 5.6l6.7 5.7C42.1 44.5 47.2 37 47.2 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
+                    Continue with Google
+                  </button>
+                  <p className="text-center text-sm text-slate-500 mt-5">
+                    New to VentureLink?{" "}
+                    <button onClick={() => setView("register")} className="text-blue-700 font-bold hover:underline">Create account</button>
+                  </p>
+                </form>}
+              {signInStep === "password" && <form onSubmit={handleLogin}>
+                  <h2 className="gs-title">Welcome</h2>
+                  <div className="gs-chip mb-5">
+                    <span className={`gs-avatar ${avatarColorForSeed(loginEmail)}`}>{getInitials(loginEmail.split("@")[0])}</span>
+                    <span className="truncate">{loginEmail}</span>
+                    <button type="button" onClick={backToIdentifier} className="gs-saved-x" title="Use another address" aria-label="Use another address">×</button>
+                  </div>
+                  <div className="gs-field">
+                    <label className="gs-label">Enter your password</label>
+                    <input type={pwVisible ? "text" : "password"} autoComplete="current-password" name="ven-login-password" autoFocus value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className="gs-input" placeholder="Your password" />
+                  </div>
+                  <label className="gs-remember">
+                    <input type="checkbox" checked={pwVisible} onChange={e => setPwVisible(e.target.checked)} />
+                    <span>Show password</span>
+                  </label>
+                  {loginError && <p className="gs-error">{loginError}</p>}
+                  <div className="gs-foot">
+                    <button type="button" onClick={backToIdentifier} className="gs-btn">Back</button>
+                    <button type="submit" disabled={authPending || !loginPassword} className="gs-btn gs-primary">{authPending ? "Checking…" : "Next"}</button>
+                  </div>
+                  <p className="text-[11.5px] mt-4" style={{
+                color: "#7c828b"
+              }}>
+                    This device remembers the address, never the password — turn that on in your browser.{" "}
+                    <button type="button" onClick={openRecovery} className="gs-link">Forgot password?</button>
+                  </p>
+                </form>}
+              {signInStep === "code" && <TwoFactorPanel pending={pending2fa} code={otpCode} setCode={setOtpCode} onSubmit={handleVerifyCode} onResend={handleResendCode} onBack={oauthStep === "code" ? backToChooser : backToPassword} backLabel={oauthStep === "code" ? "Choose another account" : "Back"} busy={authPending} error={pending2fa?.error || loginError} />}
             </div>
           </div>
-          {/* Simulated Google consent screen — active when no real Google app credentials are configured */}
-          {oauthModalOpen && <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4" onClick={() => setOauthModalOpen(false)}>
+          {/* Password recovery — additive overlay panel; the sign-in form above it is unchanged */}
+          {recoveryOpen && <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4" onClick={closeRecovery}>
               <div className="bg-white rounded-3xl shadow-2xl max-w-[420px] w-full p-7 sm:p-8 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center gap-2 mb-6">
-                  <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V24H24v8h11.3C33.7 36.4 29.3 40 24 40c-8.8 0-16-7.2-16-16s7.2-16 16-16c4.1 0 7.8 1.6 10.7 4.1l5.7-5.7C36.6 2.9 30.6 0.8 24 0.8 11.2.8.8 11.2.8 24S11.2 47.2 24 47.2 47.2 36.8 47.2 24c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.3 19 12 24 12c3.3 0 6.3 1.3 8.5 3.3l6.1-6.1C34.9 6 29.7 3.8 24 3.8c-7.6 0-14.2 4.3-17.7 10.9z"/><path fill="#4CAF50" d="M24 47.2c5.6 0 10.7-2.1 14.6-5.5l-6.7-5.7c-2.2 1.6-5 2.6-7.9 2.6-5.2 0-9.6-3.4-11.2-8.1l-6.6 5.1C8 41.3 15.3 47.2 24 47.2z"/><path fill="#1976D2" d="M43.6 20.5H42V24H24v8h11.3c-.8 2.2-2.1 4.1-3.8 5.6l6.7 5.7C42.1 44.5 47.2 37 47.2 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
-                  <p className="text-sm font-semibold text-slate-700">Sign in with Google</p>
-                  <span className="ml-auto text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Demo provider</span>
-                </div>
-                <h3 className="text-[22px] leading-snug text-slate-800 mb-1">Choose an account</h3>
-                <p className="text-sm text-slate-600 mb-5">to continue to <span className="font-semibold text-slate-800">VentureLink</span></p>
-                <div className="divide-y divide-slate-100">
-                  {DEMO_ACCOUNTS.map((d, i) => <button key={d.email} onClick={() => {
-                setOauthEmail(d.email);
-                setOauthName(d.name);
-                setOauthRole(d.role);
-              }} className={`w-full flex items-center gap-4 px-2 py-2.5 text-left rounded-lg transition-colors ${oauthEmail.toLowerCase() === d.email.toLowerCase() ? "bg-blue-50" : "hover:bg-slate-50"}`}>
-                      <span className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0 ${getAvatarColor("u" + (i + 1))}`}>{getInitials(d.name)}</span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium text-slate-800 truncate">{d.name}</span>
-                        <span className="block text-xs text-slate-500 truncate">{d.email}</span>
-                      </span>
-                      {oauthEmail.toLowerCase() === d.email.toLowerCase() && <Check className="w-4 h-4 text-blue-700 ml-auto flex-shrink-0" />}
-                    </button>)}
-                  <button onClick={() => {
-                setOauthEmail("");
-                setOauthName("");
-                setOauthRole("entrepreneur");
-              }} className={`w-full flex items-center gap-4 px-2 py-2.5 text-left rounded-lg transition-colors ${oauthEmail === "" ? "bg-blue-50" : "hover:bg-slate-50"}`}>
-                    <span className="w-9 h-9 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 flex-shrink-0">
-                      <UserPlus className="w-4 h-4" />
-                    </span>
-                    <span className="text-sm font-medium text-slate-700">Use another account</span>
+                <div className="flex items-start justify-between gap-4 mb-5">
+                  <h2 className="text-xl font-bold text-slate-900">Reset your password</h2>
+                  <button type="button" onClick={closeRecovery} className="p-1.5 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-500" aria-label="Close">
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
-                {oauthEmail === "" && <div className="mt-3 bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
-                    <input type="email" value={oauthEmail} onChange={e => setOauthEmail(e.target.value)} placeholder="Google email address" className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white" />
-                    <input type="text" value={oauthName} onChange={e => setOauthName(e.target.value)} placeholder="Display name (new account)" className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white" />
-                    <div className="flex items-center gap-2">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Join as</p>
-                      <select value={oauthRole} onChange={e => setOauthRole(e.target.value)} className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600">
-                        {Object.keys(ROLE_LABELS).filter(k => k !== "admin").map(k => <option key={k} value={k}>{ROLE_LABELS[k]}</option>)}
-                      </select>
+                {recoveryStep === "email" && <form onSubmit={handleRecoveryRequest} className="space-y-4">
+                    <p className="text-sm text-slate-500">Enter the email address you sign in with. A single-use code is issued and expires in 15 minutes.</p>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Email address</label>
+                      <input type="email" autoComplete="off" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-900 bg-slate-50 focus:bg-white transition-colors text-sm" placeholder="you@example.com" />
                     </div>
-                    <p className="text-[10px] text-slate-400">An existing VentureLink account for this address always signs in with its own saved profile and role.</p>
+                    {recoveryError && <p className="text-rose-600 text-sm font-medium">{recoveryError}</p>}
+                    <button type="submit" disabled={recoveryPending} className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded-xl transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">
+                      {recoveryPending ? "Checking…" : "Send reset code"}
+                    </button>
+                  </form>}
+                {recoveryStep === "code" && <form onSubmit={handleRecoveryReset} className="space-y-4">
+                    {recoveryMessage && <p className="text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-100 rounded-xl px-3.5 py-2.5">{recoveryMessage}</p>}
+                    <p className="text-xs text-slate-500">This build has no email service connected, so the code is shown here. With one configured it would arrive in the inbox.</p>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Reset code</label>
+                      <input autoComplete="one-time-code" value={recoveryCode} onChange={e => setRecoveryCode(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-900 bg-slate-50 focus:bg-white transition-colors text-sm" placeholder="Paste the code" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">New password</label>
+                      <input type="password" autoComplete="new-password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-900 bg-slate-50 focus:bg-white transition-colors text-sm" placeholder="At least 8 characters" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Confirm new password</label>
+                      <input type="password" autoComplete="new-password" value={resetConfirm} onChange={e => setResetConfirm(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-900 bg-slate-50 focus:bg-white transition-colors text-sm" placeholder="Type it again" />
+                    </div>
+                    {recoveryError && <p className="text-rose-600 text-sm font-medium">{recoveryError}</p>}
+                    <button type="submit" disabled={recoveryPending} className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded-xl transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">
+                      {recoveryPending ? "Updating…" : "Update password"}
+                    </button>
+                    <button type="button" onClick={() => setRecoveryStep("email")} className="w-full text-center text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors">
+                      Use a different email
+                    </button>
+                  </form>}
+                {recoveryStep === "done" && <div className="space-y-4">
+                    <div className="flex items-start gap-2.5">
+                      <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm font-bold text-slate-800">{recoveryMessage}</p>
+                    </div>
+                    <p className="text-xs text-slate-500">For security every previous session was ended. Sign in again to start a new one.</p>
+                    <button type="button" onClick={closeRecovery} className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded-xl transition-colors text-sm">
+                      Back to sign in
+                    </button>
                   </div>}
-                {oauthError && <p className="text-rose-600 text-sm font-medium mt-3">{oauthError}</p>}
-                <div className="flex items-center justify-between mt-6">
-                  <button onClick={() => setOauthModalOpen(false)} className="text-sm font-semibold text-blue-700 hover:bg-blue-50 px-4 py-2.5 rounded-xl transition-colors">Cancel</button>
-                  <button onClick={handleOauthDemoConfirm} disabled={authPending} className="bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors">
-                    {authPending ? "Authorising…" : "Continue"}
-                  </button>
-                </div>
-                <div className="flex items-center gap-4 mt-6 pt-4 border-t border-slate-100">
-                  <p className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                    <Globe className="w-3.5 h-3.5" /> English (United Kingdom)
-                  </p>
-                  <p className="ml-auto text-[11px] text-slate-400">Help · Privacy · Terms</p>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-3 leading-relaxed">Sign-in is OAuth find-or-create; a new address is created with the role chosen above. Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> on the backend to route this through real Google instead of this demo provider.</p>
+              </div>
+            </div>}
+          {/* Simulated Google consent screen — active when no real Google app credentials are configured.
+              Deliberately the same one-question-per-screen shape as the card behind it. */}
+          {oauthModalOpen && <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4" onClick={closeOauth}>
+              <div className="gs-card max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                {oauthStep === "choose" && <>
+                    <div className="flex items-center gap-2 mb-7">
+                      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V24H24v8h11.3C33.7 36.4 29.3 40 24 40c-8.8 0-16-7.2-16-16s7.2-16 16-16c4.1 0 7.8 1.6 10.7 4.1l5.7-5.7C36.6 2.9 30.6 0.8 24 0.8 11.2.8.8 11.2.8 24S11.2 47.2 24 47.2 47.2 36.8 47.2 24c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.3 19 12 24 12c3.3 0 6.3 1.3 8.5 3.3l6.1-6.1C34.9 6 29.7 3.8 24 3.8c-7.6 0-14.2 4.3-17.7 10.9z"/><path fill="#4CAF50" d="M24 47.2c5.6 0 10.7-2.1 14.6-5.5l-6.7-5.7c-2.2 1.6-5 2.6-7.9 2.6-5.2 0-9.6-3.4-11.2-8.1l-6.6 5.1C8 41.3 15.3 47.2 24 47.2z"/><path fill="#1976D2" d="M43.6 20.5H42V24H24v8h11.3c-.8 2.2-2.1 4.1-3.8 5.6l6.7 5.7C42.1 44.5 47.2 37 47.2 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
+                      <span className="text-[13px] font-medium" style={{
+                      color: "#1f1f1f"
+                    }}>Sign in</span>
+                      <span className="ml-auto text-[10px] font-bold" style={{
+                      color: "#b06000"
+                    }}>Demo provider</span>
+                    </div>
+                    <h2 className="gs-title">Choose an account</h2>
+                    <p className="gs-sub mb-4">
+                      to continue to <span className="font-medium" style={{
+                      color: "#1f1f1f"
+                    }}>VentureLink</span>
+                    </p>
+                    <div>
+                      {DEMO_ACCOUNTS.map((d, i) => <button key={d.email} onClick={() => {
+                        setOauthEmail(d.email);
+                        setOauthName(d.name);
+                        setOauthRole(d.role);
+                      }} className={`gs-row ${oauthEmail.toLowerCase() === d.email.toLowerCase() ? "gs-on" : ""}`}>
+                          <span className={`gs-avatar ${getAvatarColor("u" + (i + 1))}`}>{getInitials(d.name)}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="gs-row-name">{d.name}</span>
+                            <span className="gs-row-sub">{d.email}</span>
+                          </span>
+                          {oauthEmail.toLowerCase() === d.email.toLowerCase() && <Check className="w-4 h-4 flex-shrink-0" style={{
+                        color: "#1a56c4"
+                      }} />}
+                        </button>)}
+                      <button onClick={() => {
+                        setOauthEmail("");
+                        setOauthName("");
+                        setOauthRole("entrepreneur");
+                      }} className={`gs-row ${oauthEmail === "" ? "gs-on" : ""}`}>
+                        <span className="gs-avatar" style={{
+                        background: "#f1f3f4",
+                        color: "#5e636b"
+                      }}>
+                          <UserPlus className="w-4 h-4" />
+                        </span>
+                        <span className="gs-row-name">Use another account</span>
+                      </button>
+                    </div>
+                    {oauthEmail === "" && <div className="gs-field mt-4">
+                        <label className="gs-label">Google email address</label>
+                        <input type="email" autoComplete="off" value={oauthEmail} onChange={e => setOauthEmail(e.target.value)} className="gs-input" placeholder="you@example.com" />
+                        <label className="gs-label mt-3">Display name</label>
+                        <input type="text" autoComplete="off" value={oauthName} onChange={e => setOauthName(e.target.value)} className="gs-input" placeholder="Only for a new account" />
+                        <div className="flex items-center gap-2 mt-3">
+                          <p className="text-[11px] font-medium whitespace-nowrap" style={{
+                          color: "#5e636b"
+                        }}>Join as</p>
+                          <select value={oauthRole} onChange={e => setOauthRole(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none" style={{
+                          borderColor: "#d5d9e2",
+                          color: "#1f1f1f"
+                        }}>
+                            {Object.keys(ROLE_LABELS).filter(k => k !== "admin").map(k => <option key={k} value={k}>{ROLE_LABELS[k]}</option>)}
+                          </select>
+                        </div>
+                        <p className="text-[11.5px] mt-2" style={{
+                        color: "#7c828b"
+                      }}>An existing VentureLink account for this address always signs in with its own saved profile and role.</p>
+                      </div>}
+                    {oauthError && <p className="gs-error">{oauthError}</p>}
+                    <div className="gs-foot">
+                      <button onClick={closeOauth} className="gs-link">Cancel</button>
+                      <button onClick={handleOauthDemoConfirm} disabled={authPending || !oauthEmail.trim()} className="gs-btn gs-primary">
+                        {authPending ? "Authorising…" : "Continue"}
+                      </button>
+                    </div>
+                    <div className="gs-meta">
+                      <span className="flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5" /> English
+                      </span>
+                      <span>Help · Privacy · Terms</span>
+                    </div>
+                    <p className="text-[11px] mt-3 leading-relaxed" style={{
+                      color: "#7c828b"
+                    }}>Sign-in is OAuth find-or-create; a new address is created with the role chosen above. Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> on the backend to route this through real Google instead of this demo provider.</p>
+                  </>}
+                {oauthStep === "code" && <TwoFactorPanel pending={pending2fa} code={otpCode} setCode={setOtpCode} onSubmit={handleVerifyCode} onResend={handleResendCode} onBack={backToChooser} backLabel="Choose another account" busy={authPending} error={pending2fa?.error || oauthError} />}
               </div>
             </div>}
         </div>;
@@ -2993,7 +4631,7 @@ export default function App() {
           <div className="bg-white rounded-2xl shadow-2xl p-8">
             <div className="flex items-start justify-between gap-4 mb-6">
               <h2 className="text-xl font-bold text-slate-900">Create your account</h2>
-              {langPicker}
+              <div className="flex items-center gap-1">{langPicker}<ThemePicker /></div>
             </div>
             <form onSubmit={handleRegister} className="space-y-4">
               <div>
@@ -3235,6 +4873,14 @@ export default function App() {
     id: "investments",
     icon: Wallet,
     label: t("Investments")
+  }] : []), ...(cu.role !== "admin" ? [{
+    id: "funding",
+    icon: BarChart,
+    label: t("Funding Tracker")
+  }, {
+    id: "match",
+    icon: Target,
+    label: t("Smart Matching")
   }] : []), ...(showOffersNav ? [{
     id: "offers",
     icon: Send,
@@ -3271,6 +4917,9 @@ export default function App() {
   // ---- Admin: user management ----
   function toggleUserVerified(userId) {
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, verified: !u.verified } : u));
+    const target = users.find(u => u.id === userId);
+    // Tell the member out of the website as well, the way any trust change should.
+    if (target && !target.verified) notifyImportant("verification-granted", userId);
   }
   function renderAdminDashboard() {
     const stats = adminStats;
@@ -3331,6 +4980,55 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Delivery log — additive; every outward email/SMS/WhatsApp receipt */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-8">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-slate-900">Delivery log</h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {outbox?.availability?.any ? <>Sent through <span className="font-semibold text-slate-600">{[outbox.availability.email, outbox.availability.sms, outbox.availability.whatsapp].filter(Boolean).join(" · ")}</span>.</> : t("No provider is configured, so outward messages are queued here instead of leaving the server.")}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {outbox?.counts && <div className="hidden sm:flex items-center gap-1.5">
+                    {["sent", "queued", "failed"].map(k => <span key={k} className={`text-[10px] font-bold rounded-full px-2 py-0.5 border ${OUTBOX_STATUS_STYLES[k]}`}>{outbox.counts[k] || 0} {k}</span>)}
+                  </div>}
+                <button onClick={refreshOutbox} className="text-xs font-semibold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors">Refresh</button>
+              </div>
+            </div>
+            {!outbox && <p className="px-5 py-4 text-xs text-slate-400">Loading delivery log…</p>}
+            {outbox?.error && <p className="px-5 py-4 text-xs text-rose-700 font-semibold">{outbox.error}</p>}
+            {outbox && outbox.outbox && !outbox.outbox.length && <p className="px-5 py-4 text-xs text-slate-400">Nothing has been sent out yet.</p>}
+            {outbox?.outbox?.length > 0 && <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                        <th className="px-5 py-3">Event</th>
+                        <th className="px-5 py-3">Channel</th>
+                        <th className="px-5 py-3">To</th>
+                        <th className="px-5 py-3">Status</th>
+                        <th className="px-5 py-3">Detail</th>
+                      </tr></thead>
+                  <tbody>
+                    {outbox.outbox.slice(0, 40).map(row => <tr key={row.id || row._id} className="border-b border-slate-50 hover:bg-slate-50">
+                          <td className="px-5 py-3">
+                            <p className="text-sm font-semibold text-slate-800">{ALERT_KIND_LABELS[row.kind] || row.kind}</p>
+                            {row.createdAt && <p className="text-xs text-slate-400">{formatShortDateIn(row.createdAt, lang)}</p>}
+                          </td>
+                          <td className="px-5 py-3 text-slate-600">{CHANNEL_LABELS[row.channel] || row.channel}</td>
+                          <td className="px-5 py-3 text-xs text-slate-500">{row.to}</td>
+                          <td className="px-5 py-3">
+                            <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 border ${OUTBOX_STATUS_STYLES[row.status] || OUTBOX_STATUS_STYLES.skipped}`}>{row.status}</span>
+                          </td>
+                          <td className="px-5 py-3 text-xs text-slate-400 max-w-xs">
+                            <p className="truncate">{row.subject || row.body || "—"}</p>
+                            {row.reason && <p className="truncate text-slate-400">{row.provider ? `${row.provider} · ` : ""}{row.reason}</p>}
+                          </td>
+                        </tr>)}
+                  </tbody>
+                </table>
+              </div>}
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -3405,24 +5103,31 @@ export default function App() {
           </div>
 
           {(() => {
-            const recent = recentlyAccessed.filter(e => e.userId === cu.id).slice(-6).reverse().map(e => {
+            const recent = recentlyAccessed.filter(e => e.userId === cu.id).slice(-8).reverse().map(e => {
+              if (e.targetType === "project") {
+                const p = projects.find(x => x.id === e.targetId);
+                return p ? {
+                  e,
+                  p
+                } : null;
+              }
               const u = users.find(x => x.id === e.targetId);
               return u && u.id !== cu.id ? {
                 e,
                 u
               } : null;
-            }).filter(Boolean);
+            }).filter(Boolean).slice(0, 6);
             if (recent.length === 0) return null;
             return <div className="mb-8 bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
                 <div className="flex items-center gap-2 mb-3">
                   <Clock className="w-4 h-4 text-blue-700" />
                   <h3 className="font-bold text-slate-900 text-sm">{t("Recently accessed")}</h3>
-                  <span className="text-[10px] text-slate-400 font-medium">your last visited profiles, newest first</span>
+                  <span className="text-[10px] text-slate-400 font-medium">your last visited profiles and projects, newest first</span>
                 </div>
                 <div className="flex gap-2 flex-wrap">
-                  {recent.map(({e, u}) => <button key={e.id} onClick={() => viewUserProfile(u.id)} className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors">
-                        <UserAvatar user={u} size="xs" />
-                        <span className="text-xs font-semibold text-slate-700">{u.name}</span>
+                  {recent.map(({e, u, p}) => <button key={e.id} onClick={() => p ? openProject(p.id) : viewUserProfile(u.id)} className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors">
+                        {p ? <span className="w-6 h-6 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center flex-shrink-0"><Layers className="w-3.5 h-3.5" /></span> : <UserAvatar user={u} size="xs" />}
+                        <span className="text-xs font-semibold text-slate-700">{p ? p.title : u.name}</span>
                         <span className="text-[10px] text-slate-400">{formatAgo(e.at)}</span>
                       </button>)}
                 </div>
@@ -3734,9 +5439,22 @@ export default function App() {
                     {p.fundingRequired && <div className="mt-3">
                         <FundingProgressBar required={p.fundingRequired} received={getProjectFundingReceived(p.id)} />
                       </div>}
-                    <button onClick={() => viewUserProfile(owner.id)} className="mt-4 w-full text-sm py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 font-semibold transition-colors">
-                      View Founder Profile
-                    </button>
+                    <div className="flex gap-2 mt-4">
+                      <button onClick={() => openProject(p.id)} className="flex-1 text-sm py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-semibold transition-colors">
+                        View project
+                      </button>
+                      <button onClick={() => viewUserProfile(owner.id)} className="flex-1 text-sm py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 font-semibold transition-colors">
+                        View Founder Profile
+                      </button>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <button onClick={() => toggleWatch(p.id)} className={`flex-1 text-xs py-2 rounded-xl font-semibold transition-colors border ${watchedProjectIds.includes(p.id) ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                        {watchedProjectIds.includes(p.id) ? t("Watching") : t("Watch deal")}
+                      </button>
+                      <button onClick={() => toggleCompare(p.id)} className={`flex-1 text-xs py-2 rounded-xl font-semibold transition-colors border ${compareIds.includes(p.id) ? "bg-blue-50 text-blue-700 border-blue-200" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                        {compareIds.includes(p.id) ? t("In comparison") : t("Compare")}
+                      </button>
+                    </div>
                   </div>;
               };
               return <>
@@ -3946,6 +5664,12 @@ export default function App() {
                         <button onClick={() => openMessage(u.id)} className="p-2.5 bg-blue-50 rounded-xl hover:bg-blue-100 text-blue-700 transition-colors" title="Send Message">
                           <MessageCircle className="w-4 h-4" />
                         </button>
+                        <button onClick={() => toggleFollow(u.id)} className={`p-2.5 rounded-xl transition-colors border ${(cu.following || []).includes(u.id) ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 hover:bg-slate-50 text-slate-500"}`} title={(cu.following || []).includes(u.id) ? "Following" : "Follow"}>
+                          <UserCheck className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => removeConnection(u.id)} className="p-2.5 border border-slate-200 rounded-xl hover:bg-rose-50 hover:border-rose-200 text-slate-400 hover:text-rose-600 transition-colors" title="Remove connection">
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>)}
                 </div>}
@@ -3966,6 +5690,89 @@ export default function App() {
                     </div>)}
                 </div>
               </div>}
+
+            {(() => {
+              const recs = recommendMembers(cu, users, projects.filter(p => p.ownerId === cu.id), id => ({
+                avg: getAvgRating(id),
+                count: getUserReviews(id).length
+              }));
+              if (recs.length === 0) return null;
+              return <div className="mb-8">
+                  <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
+                    Recommended for you ({recs.length})
+                  </h2>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    {recs.map(r => <div key={r.user.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                        <div className="flex items-center gap-3">
+                          <UserAvatar user={r.user} size="md" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-bold text-slate-900 text-sm">{r.user.name}</p>
+                              <RoleBadge role={r.user.role} />
+                            </div>
+                            <p className="text-xs text-slate-500 truncate">{r.user.position} · {r.user.company}</p>
+                          </div>
+                          <div className="text-center flex-shrink-0">
+                            <div className={`text-base font-bold leading-none ${r.score >= 70 ? "text-emerald-600" : r.score >= 50 ? "text-amber-600" : "text-slate-500"}`}>{r.score}%</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">fit</div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-3">
+                          {r.reasons.map(x => <span key={x.key} className="text-[11px] px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg text-slate-600 font-medium">
+                              {x.label}
+                              {x.value && <span className="text-slate-400"> · {x.value}</span>}
+                            </span>)}
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <button onClick={() => viewUserProfile(r.user.id)} className="flex-1 text-xs py-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors">View Profile</button>
+                          <button onClick={() => sendConnectionRequest(r.user.id)} className="flex-1 text-xs py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-1">
+                            <UserPlus className="w-3.5 h-3.5" /> Connect
+                          </button>
+                          <button onClick={() => toggleFollow(r.user.id)} className={`text-xs px-3 py-2 border rounded-lg font-semibold transition-colors ${(cu.following || []).includes(r.user.id) ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 hover:bg-slate-50 text-slate-600"}`}>{(cu.following || []).includes(r.user.id) ? "Following" : "Follow"}</button>
+                        </div>
+                      </div>)}
+                  </div>
+                </div>;
+            })()}
+
+            {(() => {
+              const following = users.filter(u => (cu.following || []).includes(u.id));
+              const followers = users.filter(u => (cu.followers || []).includes(cu.id));
+              if (following.length === 0 && followers.length === 0) return null;
+              const row = (u, isIn) => <div key={u.id} className="bg-white rounded-xl border border-slate-100 p-3 flex items-center gap-3">
+                  <UserAvatar user={u} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{u.name}</p>
+                    <p className="text-xs text-slate-400 truncate">{u.position}</p>
+                  </div>
+                  <div className="flex gap-1.5 flex-shrink-0">
+                    <button onClick={() => viewUserProfile(u.id)} className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-colors" title="View Profile">
+                      <User className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => toggleFollow(u.id)} className={`p-2 rounded-lg border transition-colors ${isIn ? "border-slate-200 hover:bg-rose-50 hover:border-rose-200 text-slate-400 hover:text-rose-600" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`} title={isIn ? "Unfollow" : "Follow back"}>
+                      {isIn ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>;
+              return <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
+                      Following ({following.length})
+                    </h2>
+                    <div className="space-y-2">
+                      {following.length === 0 ? <p className="text-xs text-slate-400">You are not following anyone yet.</p> : following.map(u => row(u, true))}
+                    </div>
+                  </div>
+                  <div>
+                    <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
+                      Followers ({followers.length})
+                    </h2>
+                    <div className="space-y-2">
+                      {followers.length === 0 ? <p className="text-xs text-slate-400">No followers yet.</p> : followers.map(u => row(u, false))}
+                    </div>
+                  </div>
+                </div>;
+            })()}
           </div>;
         }
 
@@ -4214,6 +6021,9 @@ export default function App() {
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${p.status === "funded" ? "bg-emerald-100 text-emerald-700" : p.status === "in_talks" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
                         {p.status === "funded" ? "Funded" : p.status === "in_talks" ? "In talks" : "Open"}
                       </span>
+                      <button type="button" onClick={() => openProject(p.id)} className="flex items-center gap-1 text-xs px-2.5 py-1 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors">
+                        <Layers className="w-3 h-3" /> {t("View page")}
+                      </button>
                       <button type="button" onClick={() => startEditProject(p)} className="flex items-center gap-1 text-xs px-2.5 py-1 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors">
                         <Edit2 className="w-3 h-3" /> {t("Edit")}
                       </button>
@@ -4235,69 +6045,235 @@ export default function App() {
 
       // ======================== REQUIREMENTS ========================
       case "requirements":
-        return <div className="p-6 lg:p-8 max-w-5xl mx-auto pb-12">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-slate-900">Open Investor Requirements</h1>
-            <p className="text-slate-500 mt-1 text-sm">Browse active investment requirements from investors and submit your project for consideration</p>
-          </div>
+        {
+          // The page is split in two: open requirements grouped by industry, and
+          // the proposals that were submitted for those requirements. One filter
+          // bar drives both, so a member can look at a single industry end to end.
+          const industryOf = r => r.industry || "Unspecified";
+          const reqQuery = reqSearch.trim().toLowerCase();
+          const reqMatchesSearch = r => {
+            if (!reqQuery) return true;
+            const inv = users.find(u => u.id === r.investorId);
+            return (r.title || "").toLowerCase().includes(reqQuery) || (r.description || "").toLowerCase().includes(reqQuery) || industryOf(r).toLowerCase().includes(reqQuery) || !!(inv && (inv.name.toLowerCase().includes(reqQuery) || (inv.company || "").toLowerCase().includes(reqQuery)));
+          };
+          const reqInIndustry = r => reqIndustryFilter === "all" || industryOf(r) === reqIndustryFilter;
+          const visibleRequirements = requirements.filter(r => reqInIndustry(r) && reqMatchesSearch(r));
+          const industriesShown = Array.from(new Set(visibleRequirements.map(industryOf)));
+          const myRequirementIds = new Set(myRequirements.map(r => r.id));
+          const visibleProposals = proposals.filter(p => {
+            const related = requirements.find(r => r.id === p.requirementId);
+            if (!related) return false;
+            if (p.entrepreneurId !== cu.id && !myRequirementIds.has(p.requirementId)) return false;
+            if (reqProposalStatus !== "all" && p.status !== reqProposalStatus) return false;
+            return reqInIndustry(related) && reqMatchesSearch(related);
+          }).slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+          const sentProposals = visibleProposals.filter(p => p.entrepreneurId === cu.id);
+          const receivedProposals = visibleProposals.filter(p => p.entrepreneurId !== cu.id);
+          const activeReqFilters = (reqIndustryFilter !== "all" ? 1 : 0) + (reqProposalStatus !== "all" ? 1 : 0) + (reqQuery ? 1 : 0);
+          const PROPOSAL_STATUS = {
+            pending: ["Awaiting response", "bg-amber-100 text-amber-700"],
+            invested: ["Invested", "bg-emerald-100 text-emerald-700"],
+            declined: ["Declined", "bg-slate-100 text-slate-600"]
+          };
+          const renderRequirementCard = r => {
+            const investor = users.find(u => u.id === r.investorId);
+            const myProposalForThis = myProposals.find(pr => pr.requirementId === r.id);
+            return <div key={r.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <div className="flex items-start justify-between gap-3 mb-1.5">
+                  <h4 className="font-bold text-slate-900">{r.title}</h4>
+                  {r.budgetRange && <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full font-semibold flex-shrink-0">{r.budgetRange}</span>}
+                </div>
+                {investor && <div className="flex items-center gap-2 mb-2">
+                    <UserAvatar user={investor} size="xs" />
+                    <span className="text-xs text-slate-500">{investor.name} · {investor.company}</span>
+                  </div>}
+                {r.industry && <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">{r.industry}</span>}
+                <p className="text-sm text-slate-600 mt-2 leading-relaxed">{r.description}</p>
+                <AttachmentView name={r.fileName} dataUrl={r.fileDataUrl} className="mt-3" />
 
-          <div className="space-y-3">
-              {requirements.length === 0 && <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">No open requirements right now.</div>}
-              {requirements.map(r => {
-                const investor = users.find(u => u.id === r.investorId);
-                const myProposalForThis = myProposals.find(pr => pr.requirementId === r.id);
-                return <div key={r.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-                    <div className="flex items-start justify-between gap-3 mb-1.5">
-                      <h4 className="font-bold text-slate-900">{r.title}</h4>
-                      {r.budgetRange && <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full font-semibold flex-shrink-0">{r.budgetRange}</span>}
-                    </div>
-                    {investor && <div className="flex items-center gap-2 mb-2">
-                        <UserAvatar user={investor} size="xs" />
-                        <span className="text-xs text-slate-500">{investor.name} · {investor.company}</span>
+                {myProposalForThis ? <div className="mt-3 text-xs font-semibold">
+                    {myProposalForThis.status === "invested" && <span className="text-emerald-600">✓ Investor has invested in your submitted project</span>}
+                    {myProposalForThis.status === "pending" && <span className="text-amber-600">Proposal submitted — awaiting investor response</span>}
+                    {myProposalForThis.status === "declined" && <span className="text-slate-400">Proposal declined</span>}
+                  </div> : submitToRequirementId === r.id ? <div className="mt-3">
+                    {investor && investor.agreementPolicy && <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                        <p className="text-xs font-bold text-amber-800 mb-1.5">Agreement Policy — {investor.company}</p>
+                        <p className="text-xs text-amber-800 leading-relaxed whitespace-pre-line">{investor.agreementPolicy}</p>
                       </div>}
-                    {r.industry && <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">{r.industry}</span>}
-                    <p className="text-sm text-slate-600 mt-2 leading-relaxed">{r.description}</p>
-                    <AttachmentView name={r.fileName} dataUrl={r.fileDataUrl} className="mt-3" />
-
-                    {myProposalForThis ? <div className="mt-3 text-xs font-semibold">
-                        {myProposalForThis.status === "invested" && <span className="text-emerald-600">✓ Investor has invested in your submitted project</span>}
-                        {myProposalForThis.status === "pending" && <span className="text-amber-600">Proposal submitted — awaiting investor response</span>}
-                        {myProposalForThis.status === "declined" && <span className="text-slate-400">Proposal declined</span>}
-                      </div> : submitToRequirementId === r.id ? <div className="mt-3">
-                        {investor && investor.agreementPolicy && <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
-                            <p className="text-xs font-bold text-amber-800 mb-1.5">Agreement Policy — {investor.company}</p>
-                            <p className="text-xs text-amber-800 leading-relaxed whitespace-pre-line">{investor.agreementPolicy}</p>
-                          </div>}
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <select value={submitProjectId} onChange={e => setSubmitProjectId(e.target.value)} className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600">
-                            <option value="">Select one of your projects...</option>
-                            {myProjects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-                          </select>
-                          <button disabled={!submitProjectId || !!(investor && investor.agreementPolicy && !policyAcknowledged)} onClick={() => submitProposal(r.id, submitProjectId)} className="bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm px-4 py-2 rounded-xl font-semibold transition-colors">
-                            Submit
-                          </button>
-                          <button onClick={() => {
-                      setSubmitToRequirementId(null);
-                      setSubmitProjectId("");
-                      setPolicyAcknowledged(false);
-                    }} className="px-4 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 font-medium">
-                            Cancel
-                          </button>
-                        </div>
-                        {investor && investor.agreementPolicy && <label className="flex items-center gap-2 mt-3 cursor-pointer select-none">
-                            <input type="checkbox" checked={policyAcknowledged} onChange={e => setPolicyAcknowledged(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-blue-700 focus:ring-blue-600" />
-                            <span className="text-xs font-semibold text-slate-600">I have read and agree to {investor.company}'s agreement policy</span>
-                          </label>}
-                      </div> : <button onClick={() => {
-                    setSubmitToRequirementId(r.id);
-                    setPolicyAcknowledged(false);
-                  }} disabled={myProjects.length === 0} className="mt-3 text-sm px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors">
-                        {myProjects.length === 0 ? "Add a project first" : "Submit a Project"}
-                      </button>}
-                  </div>;
-              })}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <select value={submitProjectId} onChange={e => setSubmitProjectId(e.target.value)} className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600">
+                        <option value="">Select one of your projects...</option>
+                        {myProjects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                      </select>
+                      <button disabled={!submitProjectId || !!(investor && investor.agreementPolicy && !policyAcknowledged)} onClick={() => submitProposal(r.id, submitProjectId)} className="bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm px-4 py-2 rounded-xl font-semibold transition-colors">
+                        Submit
+                      </button>
+                      <button onClick={() => {
+                  setSubmitToRequirementId(null);
+                  setSubmitProjectId("");
+                  setPolicyAcknowledged(false);
+                }} className="px-4 py-2 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 font-medium">
+                        Cancel
+                      </button>
+                    </div>
+                    {investor && investor.agreementPolicy && <label className="flex items-center gap-2 mt-3 cursor-pointer select-none">
+                        <input type="checkbox" checked={policyAcknowledged} onChange={e => setPolicyAcknowledged(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-blue-700 focus:ring-blue-600" />
+                        <span className="text-xs font-semibold text-slate-600">I have read and agree to {investor.company}'s agreement policy</span>
+                      </label>}
+                  </div> : <button onClick={() => {
+                  setSubmitToRequirementId(r.id);
+                  setPolicyAcknowledged(false);
+                }} disabled={myProjects.length === 0} className="mt-3 text-sm px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors">
+                    {myProjects.length === 0 ? "Add a project first" : "Submit a Project"}
+                  </button>}
+              </div>;
+          };
+          const renderProposalRow = p => {
+            const related = requirements.find(r => r.id === p.requirementId);
+            const founder = users.find(u => u.id === p.entrepreneurId);
+            const investor = users.find(u => u.id === p.investorId);
+            const proj = projects.find(x => x.id === p.projectId);
+            const sent = p.entrepreneurId === cu.id;
+            const status = PROPOSAL_STATUS[p.status] || PROPOSAL_STATUS.pending;
+            return <div key={p.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-900 truncate">{proj ? proj.title : related.title}</p>
+                    <p className="text-xs text-slate-500 mt-1 truncate">
+                      {sent ? <>Sent to <span className="font-semibold text-slate-700">{investor ? investor.name : "the investor"}</span></> : <>Submitted by <span className="font-semibold text-slate-700">{founder ? founder.name : "a founder"}</span></>} · for “{related.title}”
+                    </p>
+                  </div>
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0 ${status[1]}`}>{status[0]}</span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
+                  <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">{industryOf(related)}</span>
+                  {related.budgetRange && <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full font-semibold">{related.budgetRange}</span>}
+                  {p.createdAt && <span className="text-xs text-slate-400">{formatShortDateIn(p.createdAt, lang)}</span>}
+                </div>
+                {proj && proj.description && <p className="text-sm text-slate-600 mt-2.5 leading-relaxed line-clamp-2">{proj.description}</p>}
+                <div className="flex gap-2 mt-3.5">
+                  {proj && <button onClick={() => openProject(proj.id)} className="flex-1 text-sm py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-semibold transition-colors">View project</button>}
+                  <button onClick={() => {
+                  setReqIndustryFilter(industryOf(related));
+                  setReqShow("requirements");
+                }} className="flex-1 text-sm py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 font-semibold transition-colors">Show this industry</button>
+                </div>
+              </div>;
+          };
+          const segBase = "flex items-center gap-1 rounded-xl bg-slate-100 p-1";
+          const segOpt = active => `px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`;
+          return <div className="p-6 lg:p-8 max-w-5xl mx-auto pb-12">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-slate-900">Open Investor Requirements</h1>
+              <p className="text-slate-500 mt-1 text-sm">Browse active investment requirements from investors by industry, and track the proposals submitted for them</p>
             </div>
-        </div>;
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-6">
+              <div className="flex items-center justify-between gap-3 mb-3.5 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center"><Filter className="w-4 h-4" /></span>
+                  <p className="text-sm font-bold text-slate-900">Refine requirements</p>
+                  {activeReqFilters > 0 && <span className="text-[11px] bg-blue-700 text-white px-2 py-0.5 rounded-full font-bold">{activeReqFilters} active</span>}
+                </div>
+                {activeReqFilters > 0 && <button onClick={() => {
+                setReqSearch("");
+                setReqIndustryFilter("all");
+                setReqProposalStatus("all");
+                setReqShow("all");
+              }} className="text-xs font-semibold text-slate-500 hover:text-blue-700 underline underline-offset-2">Clear all</button>}
+              </div>
+              <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 lg:items-end">
+                <div className="flex-1 relative min-w-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input value={reqSearch} onChange={e => setReqSearch(e.target.value)} placeholder="Search by requirement, industry, investor..." className="w-full pl-10 pr-9 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white text-sm" />
+                  {reqSearch && <button onClick={() => setReqSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X className="w-4 h-4" /></button>}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">Show</p>
+                    <div className={segBase}>
+                      {[["all", "Both"], ["requirements", "Requirements"], ["proposals", "Proposals"]].map(([val, label]) => <button key={val} onClick={() => setReqShow(val)} className={segOpt(reqShow === val)}>{label}</button>)}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">Proposal status</p>
+                    <div className={segBase}>
+                      {[["all", "Any"], ["pending", "Pending"], ["invested", "Invested"], ["declined", "Declined"]].map(([val, label]) => <button key={val} onClick={() => setReqProposalStatus(val)} className={segOpt(reqProposalStatus === val)}>{label}</button>)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3.5">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 pl-1">Industry</p>
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {[["all", "All industries"], ...Array.from(new Set(requirements.map(industryOf))).map(i => [i, i])].map(([val, label]) => <button key={val} onClick={() => setReqIndustryFilter(val)} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all whitespace-nowrap ${reqIndustryFilter === val ? "bg-blue-700 text-white border-blue-700 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-700"}`}>
+                      {label}
+                    </button>)}
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 font-semibold mt-3.5 pt-3 border-t border-slate-100">{visibleRequirements.length} requirement{visibleRequirements.length !== 1 ? "s" : ""} · {visibleProposals.length} proposal{visibleProposals.length !== 1 ? "s" : ""}</p>
+            </div>
+
+            {(reqShow === "all" || reqShow === "requirements") && <section className="mb-10">
+                <div className="flex items-center gap-2 mb-1">
+                  <Layers className="w-4 h-4 text-blue-700" />
+                  <h2 className="text-lg font-bold text-slate-900">Requirements by industry</h2>
+                  <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-semibold">{visibleRequirements.length}</span>
+                </div>
+                <p className="text-xs text-slate-500 mb-4">Every open requirement, grouped so each industry reads as its own section.</p>
+                {requirements.length === 0 && <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">No open requirements right now.</div>}
+                {requirements.length > 0 && industriesShown.length === 0 && <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">
+                    <p className="font-semibold">No requirement matches these filters</p>
+                    <p className="mt-1">Try another industry or clear the search</p>
+                  </div>}
+                <div className="space-y-6">
+                  {industriesShown.map(industry => {
+                const items = visibleRequirements.filter(r => industryOf(r) === industry);
+                return <div key={industry}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <h3 className="text-sm font-bold text-slate-800">{industry}</h3>
+                        <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{items.length}</span>
+                      </div>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {items.map(renderRequirementCard)}
+                      </div>
+                    </div>;
+              })}
+                </div>
+              </section>}
+
+            {(reqShow === "all" || reqShow === "proposals") && <section>
+                <div className="flex items-center gap-2 mb-1">
+                  <FileText className="w-4 h-4 text-violet-600" />
+                  <h2 className="text-lg font-bold text-slate-900">Submitted proposals</h2>
+                  <span className="text-xs bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-semibold">{visibleProposals.length}</span>
+                </div>
+                <p className="text-xs text-slate-500 mb-4">Proposals put forward for these requirements, kept apart from the open list.</p>
+                {visibleProposals.length === 0 && <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">
+                    {myProposals.length === 0 && receivedProposals.length === 0 ? <p>Nothing has been submitted for these requirements yet. Submit a project above and it appears here.</p> : <p>No proposal matches these filters.</p>}
+                  </div>}
+                {sentProposals.length > 0 && <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <h3 className="text-sm font-bold text-slate-800">You submitted</h3>
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{sentProposals.length}</span>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {sentProposals.map(renderProposalRow)}
+                  </div>
+                </div>}
+                {receivedProposals.length > 0 && <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <h3 className="text-sm font-bold text-slate-800">Submitted to your requirements</h3>
+                      <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{receivedProposals.length}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 mb-3">Accept or decline these under Investments, where the amount and PatentBot checks live.</p>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {receivedProposals.map(renderProposalRow)}
+                    </div>
+                  </div>}
+              </section>}
+          </div>;
+        }
 
       // ======================== INVESTMENTS (investor) ========================
       case "investments":
@@ -4346,6 +6322,95 @@ export default function App() {
                 <div className="text-xs text-slate-500 mt-0.5">{stat.label}</div>
               </div>)}
           </div>
+
+          {myInvestments.length > 0 && (() => {
+          // Portfolio breakdown: only what the investor's own cheques already say.
+          const bySector = {};
+          const byStage = {};
+          let best = null;
+          let weakest = null;
+          myInvestments.forEach(inv => {
+            const proj = projects.find(p => p.id === inv.projectId);
+            const sector = proj && proj.industry ? proj.industry : "Unlisted";
+            const stage = proj ? lifecycleOf(proj) : "mvp";
+            const series = getInvestmentGrowthSeries(inv);
+            const latest = series[series.length - 1];
+            const growth = inv.amount ? (latest.value - inv.amount) / inv.amount * 100 : 0;
+            const row = {
+              inv,
+              proj,
+              sector,
+              stage,
+              growth,
+              now: latest.value
+            };
+            bySector[sector] = (bySector[sector] || 0) + inv.amount;
+            byStage[stage] = (byStage[stage] || 0) + inv.amount;
+            if (!best || growth > best.growth) best = row;
+            if (!weakest || growth < weakest.growth) weakest = row;
+          });
+          const sectorRows = Object.entries(bySector).sort((a, b) => b[1] - a[1]);
+          const stageRows = Object.entries(byStage).sort((a, b) => b[1] - a[1]);
+          const spread = sectorRows.length;
+          const maxSector = sectorRows.length ? sectorRows[0][1] : 1;
+          return <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-8">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Layers className="w-4 h-4 text-blue-700" />
+                    <h3 className="font-bold text-slate-900">{t("Portfolio breakdown")}</h3>
+                  </div>
+                  <p className="text-xs text-slate-500 mb-4">Where your capital sits, sector by sector and stage by stage</p>
+                  <div className="grid md:grid-cols-2 gap-5">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">By sector</p>
+                      <div className="space-y-2">
+                        {sectorRows.map(([name, amount]) => <div key={name}>
+                            <div className="flex items-center justify-between text-xs font-semibold text-slate-600 mb-1">
+                              <span>{name}</span>
+                              <span>{moneyLabel(amount)}</span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full" style={{
+                          height: "8px"
+                        }}>
+                              <div className="bg-blue-700 rounded-full" style={{
+                            width: `${Math.max(6, Math.round(amount / maxSector * 100))}%`,
+                            height: "8px"
+                          }} />
+                            </div>
+                          </div>)}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">By stage</p>
+                      <div className="flex flex-wrap gap-2">
+                        {stageRows.map(([name, amount]) => <span key={name} className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-2.5 py-1.5 rounded-xl font-semibold">
+                            <span>{LIFECYCLE.find(s => s.key === name)?.label || name}</span>
+                            <span className="ml-1.5 text-slate-400">{moneyLabel(amount)}</span>
+                          </span>)}
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-4 mb-2">Best and weakest</p>
+                      <div className="space-y-2">
+                        {(() => {
+                        const picks = [["Top performer", best, "text-emerald-600 bg-emerald-50"], ["Needs attention", weakest, "text-amber-600 bg-amber-50"]];
+                        const rows = myInvestments.length > 1 && best && weakest && best.inv.id === weakest.inv.id ? picks.slice(0, 1) : picks;
+                        return rows.map(([label, row, tone]) => !row ? null : <div key={label} className="flex items-center gap-2 text-xs">
+                              <span className={`px-2 py-1 rounded-lg font-bold flex-shrink-0 ${tone}`}>{label}</span>
+                              <span className="font-semibold text-slate-700 truncate">{row.proj ? row.proj.title : row.inv.id}</span>
+                              <span className={`ml-auto font-bold ${row.growth >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                                {row.growth >= 0 ? "+" : ""}
+                                {row.growth.toFixed(2)}%
+                              </span>
+                            </div>);
+                      })()}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-4">
+                        <span className="font-bold text-slate-500">Sector spread</span>
+                        <span>: </span>
+                        <span>{spread}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>;
+          })()}
 
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-slate-900">{t("My Requirements")}</h3>
@@ -4553,6 +6618,370 @@ export default function App() {
             })}
             </div>}
         </div>;
+
+      // ======================== FUNDING TRACKER (additive) ========================
+      // Every number here is derived from the collections the app already keeps
+      // (projects, investments, users) plus the new per-user watchlist.
+      case "funding":
+        {
+          const rounds = projects.map(p => {
+            const owner = users.find(u => u.id === p.ownerId);
+            const backers = investments.filter(i => i.projectId === p.id);
+            const raised = backers.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+            const required = Number(p.fundingRequired) || 0;
+            return {
+              p,
+              owner,
+              backers,
+              raised,
+              required,
+              gap: Math.max(0, required - raised),
+              pct: required > 0 ? Math.min(100, Math.round(raised / required * 100)) : 0,
+              stage: lifecycleOf(p),
+              watched: watchedProjectIds.includes(p.id)
+            };
+          }).filter(r => r.owner);
+          const shown = rounds.filter(r => fundingStageFilter === "all" || r.stage === fundingStageFilter);
+          const ordered = shown.slice().sort((a, b) => {
+            if (fundingSort === "progress") return b.pct - a.pct;
+            if (fundingSort === "newest") return new Date(b.p.createdAt) - new Date(a.p.createdAt);
+            if (fundingSort === "size") return b.required - a.required;
+            return b.gap - a.gap;
+          });
+          const totalSought = rounds.reduce((s, r) => s + r.required, 0);
+          const totalPledged = rounds.reduce((s, r) => s + r.raised, 0);
+          const openRounds = rounds.filter(r => r.p.status !== "funded" && r.gap > 0).length;
+          const avgProgress = rounds.length ? Math.round(rounds.reduce((s, r) => s + r.pct, 0) / rounds.length) : 0;
+          const myWatched = myWatchRows.map(w => {
+            const r = rounds.find(x => x.p.id === w.projectId);
+            return r ? {
+              ...r,
+              addedAt: w.addedAt
+            } : null;
+          }).filter(Boolean);
+          const activity = investments.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6);
+          const comparing = compareIds.map(id => rounds.find(r => r.p.id === id)).filter(Boolean);
+          const tile = (label, value, sub, tone) => <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tone} mb-3`}>
+                <BarChart className="w-5 h-5" />
+              </div>
+              <div className="text-2xl font-bold text-slate-900">{value}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+              {sub && <div className="text-[11px] text-slate-400 mt-1">{sub}</div>}
+            </div>;
+          const pair = (n, label) => <>
+              <span>{n}</span>
+              <span> {label}</span>
+            </>;
+          return <div className="p-6 lg:p-8 max-w-5xl mx-auto pb-12">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-slate-900">Funding Tracker</h1>
+              <p className="text-slate-500 mt-1 text-sm">Every live round on the platform, how close it is to closing, and what you are watching</p>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              {tile("Total funding sought", moneyLabel(totalSought), pair(rounds.length, "rounds on the platform"), "text-blue-700 bg-blue-50")}
+              {tile("Capital pledged", moneyLabel(totalPledged), pair(investments.length, "investments recorded"), "text-emerald-600 bg-emerald-50")}
+              {tile("Open rounds", openRounds, "Still seeking capital", "text-amber-600 bg-amber-50")}
+              {tile("On your watchlist", myWatched.length, "Tracked by you", "text-violet-600 bg-violet-50")}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-6">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">Lifecycle stage</p>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1">
+                    {[["all", "All stages"], ...LIFECYCLE.map(s => [s.key, s.label])].map(([val, label]) => <button key={val} onClick={() => setFundingStageFilter(val)} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all whitespace-nowrap ${fundingStageFilter === val ? "bg-blue-700 text-white border-blue-700 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-700"}`}>
+                        {label}
+                      </button>)}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1 ml-auto">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1">Sort</p>
+                  <select value={fundingSort} onChange={e => setFundingSort(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 font-semibold text-slate-600">
+                    <option value="gap">Biggest gap first</option>
+                    <option value="progress">Most funded first</option>
+                    <option value="size">Largest round first</option>
+                    <option value="newest">Newest first</option>
+                  </select>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 font-semibold mt-3 pt-3 border-t border-slate-100">
+                <span>{pair(shown.length, shown.length === 1 ? "round shown" : "rounds shown")}</span>
+                <span className="ml-2">·</span>
+                <span className="ml-2">{avgProgress}% </span>
+                <span>average progress</span>
+              </p>
+            </div>
+
+            {myWatched.length > 0 && <>
+                <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
+                  <Target className="w-4 h-4 text-violet-600" />
+                  <span>Your watchlist</span>
+                  <span className="text-xs bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-semibold">{myWatched.length}</span>
+                </h3>
+                <div className="grid md:grid-cols-2 gap-3 mb-8">
+                  {myWatched.map(r => <div key={r.p.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-slate-900 truncate">{r.p.title}</p>
+                          <p className="text-xs text-slate-500 truncate">{r.owner.name}</p>
+                        </div>
+                        <FitBadge score={r.pct} />
+                      </div>
+                      <div className="flex items-center gap-2 mt-2 text-xs text-slate-500 flex-wrap">
+                        <span>{moneyLabel(r.raised)} </span>
+                        <span>raised of</span>
+                        <span>{moneyLabel(r.required)}</span>
+                        <span className="text-slate-300">·</span>
+                        <span>{r.backers.length} </span>
+                        <span>backers</span>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={() => openProject(r.p.id)} className="flex-1 text-xs py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-semibold transition-colors">{t("View project")}</button>
+                        <button onClick={() => toggleWatch(r.p.id)} className="text-xs px-3 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 font-semibold transition-colors">{t("Unwatch")}</button>
+                      </div>
+                    </div>)}
+                </div>
+              </>}
+
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-slate-900">Funding pipeline</h3>
+              {comparing.length > 0 && <button onClick={() => setCompareIds([])} className="text-xs font-semibold text-slate-500 hover:text-blue-700 underline underline-offset-2">{t("Clear comparison")}</button>}
+            </div>
+            <div className="space-y-4 mb-10">
+              {ordered.length === 0 && <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center text-slate-400">
+                  <BarChart className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                  <p className="font-semibold">No rounds at this stage</p>
+                </div>}
+              {ordered.map(r => {
+              const fit = cu.role === "investor" ? matchBetween(cu.id, r.p.id) : null;
+              return <div key={r.p.id} className={`bg-white rounded-2xl border shadow-sm p-5 ${compareIds.includes(r.p.id) ? "border-blue-300 ring-2 ring-blue-50" : "border-slate-100"}`}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-slate-900 leading-snug">{r.p.title}</h4>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <UserAvatar user={r.owner} size="xs" />
+                        <span className="text-xs text-slate-500 truncate">{r.owner.name} · {r.owner.company}</span>
+                        {r.owner.verified && <VerifiedBadge />}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{LIFECYCLE.find(s => s.key === r.stage)?.label || r.stage}</span>
+                      {r.p.industry && <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">{r.p.industry}</span>}
+                    </div>
+                  </div>
+
+                  {r.required > 0 && <div className="mt-3">
+                      <FundingProgressBar required={r.required} received={r.raised} />
+                      <div className="grid grid-cols-3 gap-2 mt-3">
+                        {[["Raised", moneyLabel(r.raised)], ["Still needed", moneyLabel(r.gap)], ["Backers", `${r.backers.length}`]].map(([label, value]) => <div key={label} className="bg-slate-50 rounded-xl px-3 py-2">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
+                            <p className="text-sm font-bold text-slate-900 mt-0.5">{value}</p>
+                          </div>)}
+                      </div>
+                    </div>}
+
+                  <div className="flex flex-wrap items-center gap-2 mt-4">
+                    <button onClick={() => openProject(r.p.id)} className="text-sm px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-semibold transition-colors">{t("View project")}</button>
+                    <button onClick={() => toggleWatch(r.p.id)} className={`text-sm px-4 py-2 rounded-xl font-semibold transition-colors border ${r.watched ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                      {r.watched ? t("Watching") : t("Watch deal")}
+                    </button>
+                    <button onClick={() => toggleCompare(r.p.id)} className={`text-sm px-4 py-2 rounded-xl font-semibold transition-colors border ${compareIds.includes(r.p.id) ? "bg-blue-50 text-blue-700 border-blue-200" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                      {compareIds.includes(r.p.id) ? t("In comparison") : t("Compare")}
+                    </button>
+                    {fit && <span className="text-xs text-slate-400 font-semibold ml-auto">
+                        <span>Matched for you</span>
+                        <span className="ml-1 font-bold text-slate-600">{fit.score}%</span>
+                      </span>}
+                  </div>
+                </div>;
+            })}
+            </div>
+
+            {comparing.length >= 2 && <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-10">
+                <h3 className="font-bold text-slate-900 mb-1">Deal comparison</h3>
+                <p className="text-xs text-slate-500 mb-4">Side by side, using only what the platform knows about each round</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-slate-400 uppercase tracking-wider">
+                        <th className="py-2 pr-3 font-bold">
+                          <span>Comparison</span>
+                          <span>: </span>
+                          <span>{comparing.length}</span>
+                        </th>
+                        {comparing.map(r => <th key={r.p.id} className="py-2 px-3 font-bold text-slate-700 whitespace-nowrap">{r.p.title}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {[["Founder", r => r.owner.name], ["Company", r => r.owner.company || "—"], ["Sector", r => r.p.industry || "—"], ["Stage", r => LIFECYCLE.find(s => s.key === r.stage)?.label || r.stage], ["Round size", r => moneyLabel(r.required)], ["Raised", r => moneyLabel(r.raised)], ["Still needed", r => moneyLabel(r.gap)], ["Funded", r => `${r.pct}%`], ["Backers", r => `${r.backers.length}`], ["Patent", r => r.p.patented === true || r.p.patented === "yes" ? r.p.noveltyStatus === "cleared" ? "Verified" : "Claimed" : "None"], ["Milestones done", r => `${milestoneProgress(r.p.milestones || []).done} / ${milestoneProgress(r.p.milestones || []).total}`], ["Team", r => `${(r.p.team || []).length}`], ["Posted", r => new Date(r.p.createdAt).toLocaleDateString(lang, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric"
+                      })]].map(([label, fn]) => <tr key={label}>
+                          <td className="py-2 pr-3 text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">{label}</td>
+                          {comparing.map(r => <td key={r.p.id} className="py-2 px-3 text-slate-700 font-medium">{fn(r)}</td>)}
+                        </tr>)}
+                    </tbody>
+                  </table>
+                </div>
+              </div>}
+
+            <h3 className="font-bold text-slate-900 mb-3">Recent funding activity</h3>
+            <div className="space-y-2.5">
+              {activity.length === 0 && <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">No funding has closed yet.</div>}
+              {activity.map(inv => {
+              const investor = users.find(u => u.id === inv.investorId);
+              const founder = users.find(u => u.id === inv.entrepreneurId);
+              const proj = projects.find(p => p.id === inv.projectId);
+              if (!investor || !founder) return null;
+              return <div key={inv.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-3">
+                    <UserAvatar user={investor} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-700 truncate">
+                        <span className="font-semibold">{investor.name}</span>
+                        <span> invested in </span>
+                        <span className="font-semibold">{founder.name}</span>
+                        {proj && <span className="text-slate-400"> · {proj.title}</span>}
+                      </p>
+                      <p className="text-xs text-slate-400">{new Date(inv.createdAt).toLocaleDateString(lang, {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric"
+                    })}</p>
+                    </div>
+                    <span className="text-sm font-bold text-emerald-600 flex-shrink-0">{moneyLabel(inv.amount)}</span>
+                  </div>;
+            })}
+            </div>
+          </div>;
+        }
+
+      // ======================== SMART MATCHING (additive) ========================
+      case "match":
+        {
+          const investingUsers = users.filter(u => u.role === "investor");
+          const ownedProjects = projects.filter(p => p.ownerId === cu.id);
+          const isInvestor = cu.role === "investor";
+          const sectors = Array.from(new Set(projects.map(p => p.industry).filter(Boolean)));
+          const pool = projects.filter(p => matchSectorFilter === "all" || p.industry === matchSectorFilter);
+          const asInvestor = isInvestor ? rankProjectsForInvestor(cu, pool, matchCtx).map(entry => ({
+            ...entry,
+            stage: lifecycleOf(entry.project)
+          })).slice(0, 8) : [];
+          const perProject = !isInvestor ? ownedProjects.map(p => ({
+            project: p,
+            matches: rankInvestorsForProject(p, investingUsers, matchCtx).slice(0, 4)
+          })) : [];
+          return <div className="p-6 lg:p-8 max-w-5xl mx-auto pb-12">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-slate-900">Smart Matching</h1>
+              <p className="text-slate-500 mt-1 text-sm">Ranked deals and investors, each with the reasons behind its fit score</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-6">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Sector</p>
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {[["all", "All sectors"], ...sectors.map(s => [s, s])].map(([val, label]) => <button key={val} onClick={() => setMatchSectorFilter(val)} className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all whitespace-nowrap ${matchSectorFilter === val ? "bg-blue-700 text-white border-blue-700 shadow-sm" : "bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-700"}`}>
+                    {label}
+                  </button>)}
+              </div>
+            </div>
+
+            {isInvestor && <>
+                <h3 className="font-bold text-slate-900 mb-1">Deals matched to your profile</h3>
+                <p className="text-xs text-slate-500 mb-4">Scored on your sectors, your cheque size, the stages you write, and the round's own momentum</p>
+                <div className="space-y-4 mb-10">
+                  {asInvestor.length === 0 && <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center text-slate-400">
+                      <Target className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                      <p className="font-semibold">No live rounds to match yet</p>
+                    </div>}
+                  {asInvestor.map(entry => {
+                const owner = users.find(u => u.id === entry.project.ownerId);
+                if (!owner) return null;
+                return <div key={entry.project.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                      <div className="flex items-start gap-3">
+                        <UserAvatar user={owner} size="md" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-bold text-slate-900">{entry.project.title}</h4>
+                            <FitBadge score={entry.score} />
+                            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{LIFECYCLE.find(s => s.key === entry.stage)?.label || entry.stage}</span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">{owner.name} · {owner.company}</p>
+                          <p className="text-sm text-slate-600 mt-2 leading-relaxed line-clamp-2">{entry.project.description || "No description yet."}</p>
+                          <div className="mt-3">
+                            <MatchPills reasons={entry.reasons} gaps={entry.gaps} />
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 mt-3">
+                            <button onClick={() => openProject(entry.project.id)} className="text-xs px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-semibold transition-colors">{t("View project")}</button>
+                            <button onClick={() => toggleWatch(entry.project.id)} className={`text-xs px-4 py-2 rounded-xl font-semibold transition-colors border ${watchedProjectIds.includes(entry.project.id) ? "bg-violet-50 text-violet-700 border-violet-200" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                              {watchedProjectIds.includes(entry.project.id) ? t("Watching") : t("Watch deal")}
+                            </button>
+                            <button onClick={() => toggleCompare(entry.project.id)} className={`text-xs px-4 py-2 rounded-xl font-semibold transition-colors border ${compareIds.includes(entry.project.id) ? "bg-blue-50 text-blue-700 border-blue-200" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                              {compareIds.includes(entry.project.id) ? t("In comparison") : t("Compare")}
+                            </button>
+                            <span className="text-xs text-slate-400 ml-auto">
+                              <span>{moneyLabel(entry.facts.raised)} </span>
+                              <span>raised of</span>
+                              <span> {moneyLabel(entry.facts.sought)}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>;
+              })}
+                </div>
+              </>}
+
+            {!isInvestor && <>
+                {perProject.length === 0 ? <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center text-slate-400">
+                    <Target className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                    <p className="font-semibold">Publish a project to see which investors fit it</p>
+                    <p className="text-sm mt-1">Matching reads your round size, sector, stage and patent status.</p>
+                  </div> : perProject.map(group => <div key={group.project.id} className="mb-10">
+                    <h3 className="font-bold text-slate-900 mb-1">{group.project.title}</h3>
+                    <p className="text-xs text-slate-500 mb-4">Investors ranked by how well this round suits them</p>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {group.matches.map(entry => <div key={entry.investor.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                          <div className="flex items-start gap-3">
+                            <UserAvatar user={entry.investor} size="sm" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-slate-900 truncate">{entry.investor.name}</span>
+                                <FitBadge score={entry.score} />
+                              </div>
+                              <p className="text-xs text-slate-500 truncate">
+                                <span>{entry.investor.company}</span>
+                                {entry.investor.investmentRange && <span> · {entry.investor.investmentRange}</span>}
+                              </p>
+                              <div className="mt-2">
+                                <MatchPills reasons={entry.reasons} gaps={entry.gaps} />
+                              </div>
+                              <div className="flex gap-2 mt-3">
+                                <button onClick={() => viewUserProfile(entry.investor.id)} className="text-xs px-3 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-semibold transition-colors">{t("View Profile")}</button>
+                                {cu.connections.includes(entry.investor.id) ? <button onClick={() => openMessage(entry.investor.id)} className="text-xs px-3 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors">{t("Message")}</button> : <button onClick={() => sendConnectionRequest(entry.investor.id)} className="text-xs px-3 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors">{cu.pendingSent.includes(entry.investor.id) ? t("Requested") : t("Connect")}</button>}
+                              </div>
+                            </div>
+                          </div>
+                        </div>)}
+                    </div>
+                  </div>)}
+              </>}
+
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <h3 className="font-bold text-slate-900 mb-3">How a fit score is built</h3>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {[["Sector overlap", "The investor names this industry, or the founder works in it"], ["Check size", "The round sits inside the investor's stated range"], ["Stage fit", "Early, growth or late stage, read from what they write about"], ["Defensibility", "A filed patent, verified by PatentBot, counts most"], ["Deal momentum", "Other backers already in, and traction numbers in the pitch"], ["Network & location", "Existing connection with the founder, or the same city"]].map(([label, text]) => <div key={label} className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs font-bold text-slate-700">{label}</p>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">{text}</p>
+                  </div>)}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-4">Scores are computed in your browser from data on this platform. Nothing is sent to a third-party model.</p>
+            </div>
+          </div>;
+        }
 
       // ======================== OFFERS (freelance offer letters) ========================
       case "offers":
@@ -5109,6 +7538,9 @@ export default function App() {
                       <div className="flex gap-1 flex-wrap">
                         {w.tags.slice(0, 2).map(t => <span key={t} className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{t}</span>)}
                       </div>
+                      {(latestCu?.id === w.hostId || latestCu?.role === "admin") && <button onClick={() => inviteWebinarMembers(w)} disabled={invitingWebinarId === w.id} className="text-xs px-3.5 py-2 rounded-xl font-semibold border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50 transition-colors flex-shrink-0">
+                          {invitingWebinarId === w.id ? t("Checking fit…") : t("Invite matched members")}
+                        </button>}
                       <button onClick={() => toggleWebinarRegistration(w.id)} className={`text-xs px-4 py-2 rounded-xl font-semibold transition-colors flex-shrink-0 ${myWebinarRegistrations.includes(w.id) ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" : "bg-blue-700 hover:bg-blue-800 text-white"}`}>
                         {myWebinarRegistrations.includes(w.id) ? "✓ Registered" : "Register"}
                       </button>
@@ -5302,6 +7734,42 @@ export default function App() {
                     }))} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-slate-50" placeholder="Contract work" />
                     </div>
                   </div>}
+                <EntryListEditor title="Work history" itemLabel="Role" addLabel="Add role" rows={editForm.experienceList} onChange={rows => setEditForm(f => ({
+                  ...f,
+                  experienceList: rows
+                }))} fields={[{
+                  key: "role",
+                  placeholder: "Position or title"
+                }, {
+                  key: "company",
+                  placeholder: "Company"
+                }, {
+                  key: "from",
+                  placeholder: "From (year)"
+                }, {
+                  key: "to",
+                  placeholder: "To (year)"
+                }, {
+                  key: "note",
+                  placeholder: "What you did there",
+                  wide: true
+                }]} />
+                <EntryListEditor title="Education" itemLabel="Qualification" addLabel="Add education" rows={editForm.education} onChange={rows => setEditForm(f => ({
+                  ...f,
+                  education: rows
+                }))} fields={[{
+                  key: "school",
+                  placeholder: "School or university"
+                }, {
+                  key: "degree",
+                  placeholder: "Degree or qualification"
+                }, {
+                  key: "from",
+                  placeholder: "From (year)"
+                }, {
+                  key: "to",
+                  placeholder: "To (year)"
+                }]} />
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">Company Logo</label>
@@ -5361,9 +7829,48 @@ export default function App() {
             fromName: users.find(u => u.id === r.fromId)?.name || "A member"
           }));
           const checklist = getVerificationChecklist(cu);
+          const securitySessions = (security?.sessions || []).filter(s => s && s.jti);
+          const securityActivity = security?.activity || [];
+          const activeSessions = securitySessions.filter(s => s.active);
+          // A freshly registered profile has almost nothing filled in yet, so the
+          // card above is drawn compact. Established accounts keep the full card.
+          const newAccount = profileCompletion(cu) <= 25;
+          // Each account panel holds a long form or a long list, so every account
+          // gets one panel at a time in its own section instead of one endless
+          // stack. The tab row carries a live summary of what is inside.
+          const channelsOn = alerts ? ALERT_CHANNEL_KEYS.filter(k => alerts.channels?.[k]).length : 0;
+          const PANEL_TABS = [{
+            key: "verification",
+            label: "Verification",
+            hint: cu.verified ? "Verified" : checklist.some(c => c.done) ? "In progress" : "Not started"
+          }, {
+            key: "security",
+            label: "Security",
+            hint: `${activeSessions.length} active`
+          }, {
+            key: "two-factor",
+            label: "Two-step",
+            hint: tf?.enabled ? "On" : "Off"
+          }, {
+            key: "alerts",
+            label: "Alerts",
+            hint: `${channelsOn} on`
+          }];
           return <>
-            <ProfileView user={cu} isOwnProfile onEdit={startEditProfile} onConnect={() => {}} onMessage={() => {}} connectionStatus="self" avgRating={getAvgRating(cu.id)} reviewCount={ownReviews.length} reviewsList={ownReviews} />
-            <div className="max-w-3xl mx-auto px-6 -mt-1 mb-10">
+            <ProfileView user={cu} isOwnProfile compact={newAccount} onEdit={startEditProfile} onConnect={() => {}} onMessage={() => {}} connectionStatus="self" avgRating={getAvgRating(cu.id)} reviewCount={ownReviews.length} reviewsList={ownReviews} ownedProjects={projects.filter(p => p.ownerId === cu.id)} followingCount={(cu.following || []).length} followerCount={(cu.followers || []).length} />
+            <div className="max-w-4xl mx-auto px-6 mb-5">
+              <div className="flex items-end justify-between gap-3 mb-2 flex-wrap">
+                <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Account settings</h2>
+                <p className="text-xs text-slate-400">Open one section at a time.</p>
+              </div>
+              <div className="vl-panel-tabs">
+                {PANEL_TABS.map(tab => <button key={tab.key} onClick={() => setProfilePanelTab(tab.key)} className={"vl-panel-tab" + (profilePanelTab === tab.key ? " vl-panel-tab-on" : "")}>
+                    <span>{t(tab.label)}</span>
+                    <span className="vl-panel-tab-hint">{t(tab.hint)}</span>
+                  </button>)}
+              </div>
+            </div>
+            {profilePanelTab === "verification" && <div className="max-w-4xl mx-auto px-6 -mt-1 mb-10">
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
                 <div className="flex items-center justify-between gap-3 mb-1">
                   <h3 className="font-bold text-slate-900 flex items-center gap-2">
@@ -5385,8 +7892,722 @@ export default function App() {
                     {verifyMessage && <p className="text-xs text-emerald-700 font-semibold mt-2">{verifyMessage}</p>}
                   </>}
               </div>
-            </div>
+            </div>}
+            {/* Security & sessions — password on its own, then the devices and
+                the sign-in log, each in its own card */}
+            {profilePanelTab === "security" && <div className="max-w-4xl mx-auto px-6 -mt-1 mb-10">
+              <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-blue-700" /> Security &amp; sessions
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5">Change your password, review the devices that hold a session, and check recent sign-in activity.</p>
+                </div>
+                <button onClick={refreshSecurity} className="text-xs font-semibold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors">
+                  Refresh
+                </button>
+              </div>
+
+              {securityError && <div className="bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5 mb-4">
+                  <p className="text-xs font-semibold text-rose-700">{securityError}</p>
+                </div>}
+              {securityNote && <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-3.5 py-2.5 mb-4">
+                  <p className="text-xs font-semibold text-emerald-700">{securityNote}
+                    {securitySignedOut > 0 && <>
+                      <span>{securitySignedOut}</span> {t("other session(s) signed out.")}
+                    </>}
+                  </p>
+                </div>}
+
+              <div className="grid lg:grid-cols-2 gap-5">
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Change password</h4>
+                  <form onSubmit={handleChangePassword} className="space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Current</label>
+                      <input type="password" autoComplete="current-password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-slate-50 focus:bg-white" placeholder="••••••••" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">New</label>
+                      <input type="password" autoComplete="new-password" value={pwNext} onChange={e => setPwNext(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-slate-50 focus:bg-white" placeholder="8+ characters" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Confirm</label>
+                      <input type="password" autoComplete="new-password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-slate-50 focus:bg-white" placeholder="Repeat it" />
+                    </div>
+                    <p className="text-xs text-slate-400">A new password ends every other session. This device stays signed in.</p>
+                    <button type="submit" disabled={securityBusy || !pwCurrent || !pwNext || !pwConfirm} className="text-sm px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors">
+                      {securityBusy ? "Updating…" : "Update password"}
+                    </button>
+                  </form>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                  <div className="flex items-center justify-between gap-3 mb-1">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Active sessions
+                      <span className="ml-1.5 text-[10px] font-semibold text-slate-400">{activeSessions.length}</span>
+                    </h4>
+                    {activeSessions.length > 1 && <button onClick={handleRevokeOtherSessions} className="text-xs font-semibold text-rose-600 hover:text-rose-700 transition-colors">Sign out everywhere else</button>}
+                  </div>
+                  <p className="text-xs text-slate-400 mb-2">Every device signed in to this account.</p>
+                  {!security && <p className="text-xs text-slate-400">Loading sessions…</p>}
+                  {security && !securitySessions.length && <p className="text-xs text-slate-400">No sessions recorded for this account yet.</p>}
+                  <div className="divide-y divide-slate-100 overflow-y-auto" style={{
+                  maxHeight: "24rem"
+                }}>
+                    {securitySessions.map(s => <div key={s.jti} className="flex items-start gap-3 py-2.5">
+                        <Monitor className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-slate-800">{describeDevice(s.userAgent)}</span>
+                            {s.current && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 rounded-full px-2 py-0.5">This device</span>}
+                            {!s.active && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">Signed out</span>}
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {SESSION_VIA_LABELS[s.via] || s.via} · {s.ip} · {t("Started")} {formatShortDateIn(s.createdAt, lang)}
+                            {s.lastSeenAt && <> · {t("Last seen")} {formatShortDateIn(s.lastSeenAt, lang)}</>}
+                          </p>
+                        </div>
+                        {s.active && !s.current && <button onClick={() => handleRevokeSession(s.jti)} className="text-xs font-semibold text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-200 rounded-lg px-3 py-1.5 transition-colors flex-shrink-0">Sign out</button>}
+                      </div>)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mt-5">
+                <div className="flex items-center justify-between gap-3 mb-1">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Recent sign-in activity</h4>
+                  <span className="text-[10px] font-semibold text-slate-400">{securityActivity.length}</span>
+                </div>
+                <p className="text-xs text-slate-400 mb-2">Successful and failed attempts on this account.</p>
+                {!security && <p className="text-xs text-slate-400">Loading activity…</p>}
+                {security && !securityActivity.length && <p className="text-xs text-slate-400">Nothing recorded yet.</p>}
+                <div className="divide-y divide-slate-100">
+                  {(showAllActivity ? securityActivity : securityActivity.slice(0, 8)).map((a, i) => {
+                  const d = splitDetail(a.detail);
+                  return <div key={`${a.at}-${i}`} className="flex items-start gap-3 py-2">
+                      {a.outcome === "success" ? <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" /> : <UserX className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-700">
+                          {ACTIVITY_VIA_LABELS[a.via] || a.via}
+                          {a.outcome === "failure" && <> · {t("Failed")}</>}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {formatShortDateIn(a.at, lang)} · {a.ip}
+                          {a.detail && <> · <span>{d.count}</span> {d.rest}</>}
+                        </p>
+                      </div>
+                    </div>;
+                })}
+                </div>
+                {securityActivity.length > 8 && <button onClick={() => setShowAllActivity(v => !v)} className="text-xs font-semibold text-blue-700 hover:underline mt-2.5">
+                    {showAllActivity ? t("Show less") : t("Show all activity")} · {securityActivity.length}
+                  </button>}
+              </div>
+            </div>}
+            {/* Two-step verification — status on the left, the action on the
+                right; sign-in behaviour for every other account is unchanged
+                until a member switches this on */}
+            {profilePanelTab === "two-factor" && <div className="max-w-4xl mx-auto px-6 -mt-1 mb-10">
+              <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-blue-700" /> Two-step verification
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5">{t("After your password, every sign-in also asks for a 6-digit code. Works the same way for Google sign-in.")}</p>
+                </div>
+                <span className={`text-[10px] font-bold rounded-full px-2.5 py-1 border ${tf?.enabled ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-slate-500 bg-slate-50 border-slate-100"}`}>
+                  {tf?.enabled ? t("On") : t("Off")}
+                </span>
+              </div>
+              {tfError && <div className="bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5 mb-4">
+                  <p className="text-xs font-semibold text-rose-700">{tfError}</p>
+                </div>}
+              {tfNote && <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-3.5 py-2.5 mb-4">
+                  <p className="text-xs font-semibold text-emerald-700">{tfNote}</p>
+                </div>}
+              {!tf && <p className="text-xs text-slate-400">{t("Loading security settings…")}</p>}
+              <div className="grid lg:grid-cols-2 gap-5">
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Current status</h4>
+                  {tf && tf.enabled && <>
+                      <p className="text-sm text-slate-700 mb-1">
+                        {t("Codes are sent by")} <span className="font-semibold">{t(CHANNEL_LABELS[tf.method] || "Email")}</span>
+                        {tf.dest ? <> {t("to")} <span className="font-semibold">{tf.dest}</span></> : null}.
+                      </p>
+                      <p className="text-xs text-slate-400">{t("Your password alone no longer signs you in — on any device, including Google sign-in.")}</p>
+                    </>}
+                  {tf && !tf.enabled && <p className="text-xs text-slate-500 leading-relaxed">{t("Two-step is off, so your password alone signs you in. Turn it on if this account holds agreements or offer letters.")}</p>}
+                  {tf && <div className="mt-4 pt-4 border-t border-slate-100 space-y-1.5">
+                      {ALERT_CHANNEL_KEYS.map(key => <p key={key} className="text-xs text-slate-400 flex items-center gap-2">
+                          <span className={tf.availability?.[key] ? "text-emerald-600 font-semibold" : ""}>{t(CHANNEL_LABELS[key])}</span>
+                          <span>{tf.availability?.[key] ? t("can send from this server") : t("shown on screen here")}</span>
+                        </p>)}
+                    </div>}
+                </div>
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                  {tf && !tf.enabled && !tfChallenge && <form onSubmit={handleEnableTwoFactor}>
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">{t("Choose how to receive the code")}</h4>
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {ALERT_CHANNEL_KEYS.map(key => <button key={key} type="button" onClick={() => setTfMethod(key)} className={`text-xs font-semibold px-3.5 py-2 rounded-xl border transition-colors ${tfMethod === key ? "bg-blue-50 border-blue-300 text-blue-800" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                            {t(CHANNEL_LABELS[key])}
+                          </button>)}
+                      </div>
+                      {tfMethod !== "email" && <div className="mb-4">
+                          <label className="block text-xs font-bold text-slate-600 mb-1">{t("Phone number")}</label>
+                          <input type="tel" autoComplete="tel" value={tfPhone} onChange={e => setTfPhone(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-slate-50 focus:bg-white" placeholder="+91 98765 43210" />
+                          <p className="text-xs text-slate-400 mt-1.5">{t("The code goes to this number when the account signs in.")}</p>
+                        </div>}
+                      {tfMethod === "email" && <p className="text-xs text-slate-500 mb-4">{t("Codes go to")} <span className="font-semibold text-slate-700">{latestCu?.email || alerts?.email || ""}</span></p>}
+                      <div className="mb-4">
+                        <label className="block text-xs font-bold text-slate-600 mb-1">{t("Current password")}</label>
+                        <input type="password" autoComplete="current-password" value={tfPassword} onChange={e => setTfPassword(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-slate-50 focus:bg-white" placeholder="Confirm it is you" />
+                      </div>
+                      <button type="submit" disabled={tfBusy || !tfPassword || (tfMethod !== "email" && !tfPhone)} className="text-sm px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors">
+                        {tfBusy ? t("Sending…") : t("Send verification code")}
+                      </button>
+                    </form>}
+                  {tfChallenge && <div className="border border-blue-100 bg-blue-50/40 rounded-xl p-4">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">{t("Enter the 6-digit code")}</h4>
+                      <p className="text-xs text-slate-600 mb-3">
+                        {t("Sent by")} <span className="font-semibold">{t(CHANNEL_LABELS[tfChallenge.method] || "Email")}</span>
+                        {tfChallenge.dest ? <> {t("to")} <span className="font-semibold">{tfChallenge.dest}</span></> : null}
+                        {tfChallenge.expiresMinutes ? <> · {t("expires in")} {tfChallenge.expiresMinutes} {t("minutes")}.</> : null}
+                      </p>
+                      {tfChallenge.devCode && <p className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl px-3 py-2 mb-3">
+                          {t("No code provider is connected to this server, so the code is shown here:")} <span className="font-mono tracking-widest">{tfChallenge.devCode}</span>
+                        </p>}
+                      <form onSubmit={handleConfirmTwoFactor} className="flex flex-wrap items-end gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1">{t("Code")}</label>
+                          <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={tfCode} onChange={e => setTfCode(e.target.value.replace(/[^\d]/g, "").slice(0, 6))} className="w-32 px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-white text-center tracking-[0.3em] font-semibold" placeholder="000000" />
+                        </div>
+                        <button type="submit" disabled={tfBusy || tfCode.length < 6} className="text-sm px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-xl font-semibold transition-colors">{t("Turn on")}</button>
+                        <button type="button" onClick={handleResendTfCode} disabled={tfBusy} className="text-sm px-3 py-2 text-blue-700 hover:bg-blue-100 rounded-xl font-semibold transition-colors">{t("Send another code")}</button>
+                        <button type="button" onClick={cancelTfSetup} className="text-sm px-3 py-2 text-slate-500 hover:bg-slate-100 rounded-xl font-semibold transition-colors">{t("Cancel")}</button>
+                      </form>
+                    </div>}
+                  {tf && tf.enabled && <form onSubmit={handleDisableTwoFactor}>
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Turn it off</h4>
+                      <div className="mb-4">
+                        <label className="block text-xs font-bold text-slate-600 mb-1">{t("Current password")}</label>
+                        <input type="password" autoComplete="current-password" value={tfPassword} onChange={e => setTfPassword(e.target.value)} className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-slate-50 focus:bg-white" placeholder="Confirm it is you" />
+                      </div>
+                      <button type="submit" disabled={tfBusy || !tfPassword} className="text-sm px-4 py-2 bg-white hover:bg-slate-50 disabled:opacity-40 text-rose-700 border border-rose-200 rounded-xl font-semibold transition-colors">{t("Turn off two-step verification")}</button>
+                    </form>}
+                </div>
+              </div>
+            </div>}
+            {/* Outward alerts — the same messages the bell shows, also mailed,
+                texted and sent on WhatsApp when the member opts in */}
+            {profilePanelTab === "alerts" && <div className="max-w-4xl mx-auto px-6 -mt-1 mb-10">
+              <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-blue-700" /> Alerts by email, SMS and WhatsApp
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5">{t("Important events — offer letters, filed agreements, verification codes, webinar invites — also leave the website.")}</p>
+                </div>
+                <button onClick={refreshAlerts} className="text-xs font-semibold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors">{t("Refresh")}</button>
+              </div>
+              {alertError && <div className="bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5 mb-4">
+                  <p className="text-xs font-semibold text-rose-700">{alertError}</p>
+                </div>}
+              {alertNote && <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-3.5 py-2.5 mb-4">
+                  <p className="text-xs font-semibold text-emerald-700">{alertNote}</p>
+                </div>}
+              {!alerts && <p className="text-xs text-slate-400">{t("Loading alert settings…")}</p>}
+              {alerts && <div className="grid lg:grid-cols-2 gap-5">
+                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Channels</h4>
+                    <p className="text-xs text-slate-400 mb-2">{t("A channel this server cannot send through is marked, so nothing looks switched on when it is not.")}</p>
+                    <div className="divide-y divide-slate-100 mb-4">
+                      {ALERT_CHANNEL_KEYS.map(key => <div key={key} className="flex items-center justify-between gap-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-800 flex items-center gap-2 flex-wrap">
+                              {t(CHANNEL_LABELS[key])}
+                              {!alerts.availability?.[key] && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-2 py-0.5">{t("cannot send here")}</span>}
+                            </p>
+                            <p className="text-xs text-slate-400 truncate">
+                              {key === "email" ? alerts.email : key === "sms" ? (alerts.phone || t("Add a number below")) : (alerts.phone || t("Add a number below"))}
+                              {alerts.availability?.[key] ? <> · {t("via")} <span className="font-semibold text-slate-500">{alerts.availability[key]}</span></> : <> · {t("no provider configured")}</>}
+                            </p>
+                          </div>
+                          <label className="flex items-center gap-2 cursor-pointer flex-shrink-0">
+                            <input type="checkbox" checked={!!alerts.channels[key]} onChange={() => toggleAlertChannel(key)} className="w-4 h-4 accent-blue-700" />
+                            <span className="text-xs font-semibold text-slate-500">{alerts.channels[key] ? t("On") : t("Off")}</span>
+                          </label>
+                        </div>)}
+                    </div>
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">{t("Phone number for SMS and WhatsApp")}</label>
+                        <input type="tel" autoComplete="tel" value={tfPhone} onChange={e => setTfPhone(e.target.value)} className="w-full sm:w-64 px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm bg-slate-50 focus:bg-white" placeholder="+91 98765 43210" />
+                      </div>
+                      <button onClick={() => handleSaveAlertChannels(false)} disabled={alertBusy} className="text-sm px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-xl font-semibold transition-colors">{t("Save settings")}</button>
+                      <button onClick={() => handleSaveAlertChannels(true)} disabled={alertBusy} className="text-sm px-4 py-2 bg-white hover:bg-slate-50 disabled:opacity-40 text-blue-700 border border-blue-200 rounded-xl font-semibold transition-colors">{t("Save and send a test")}</button>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">{t("Alerts sent to you")}</h4>
+                    <p className="text-xs text-slate-400 mb-3">{t("The most recent messages that left the website for this account.")}</p>
+                    {!myAlerts && <p className="text-xs text-slate-400">{t("Loading…")}</p>}
+                    {myAlerts && !myAlerts.length && <p className="text-xs text-slate-400">{t("Nothing has left the website for you yet.")}</p>}
+                    <div className="divide-y divide-slate-100">
+                      {(myAlerts || []).slice(0, 8).map(row => <div key={row.id || row._id} className="flex items-start gap-3 py-2">
+                          <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 border flex-shrink-0 mt-0.5 ${OUTBOX_STATUS_STYLES[row.status] || OUTBOX_STATUS_STYLES.skipped}`}>
+                            {row.status}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-slate-700 truncate">{ALERT_KIND_LABELS[row.kind] || row.kind}</p>
+                            <p className="text-xs text-slate-400 truncate">
+                              {t(CHANNEL_LABELS[row.channel] || row.channel)} · {row.to}
+                              {row.createdAt && <> · {formatShortDateIn(row.createdAt, lang)}</>}
+                            </p>
+                            {row.reason && <p className="text-[11px] text-slate-400 truncate">{row.reason}</p>}
+                          </div>
+                        </div>)}
+                    </div>
+                  </div>
+                </div>}
+            </div>}
           </>;
+        }
+
+      // ======================== PROJECT PAGE ========================
+      case "project-detail":
+        {
+          const project = viewingProjectId ? projects.find(p => p.id === viewingProjectId) : null;
+          if (!project) return <div className="p-6 lg:p-8 max-w-5xl mx-auto">
+              <button onClick={() => setView("projects")} className="text-sm text-blue-700 hover:underline font-semibold flex items-center gap-1">
+                <ChevronLeft className="w-4 h-4" /> Back to projects
+              </button>
+              <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center mt-4">
+                <Layers className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                <p className="font-semibold text-slate-700">This project is no longer available.</p>
+                <p className="text-sm text-slate-400 mt-1">It may have been removed by its founder.</p>
+              </div>
+            </div>;
+          const owner = users.find(u => u.id === project.ownerId);
+          const isOwner = !!(owner && owner.id === cu.id);
+          const received = getProjectFundingReceived(project.id);
+          const required = project.fundingRequired || 0;
+          const pctFunded = required ? Math.min(100, Math.round(received / required * 100)) : 0;
+          const backers = investments.filter(i => i.projectId === project.id);
+          const projectProposals = proposals.filter(pr => pr.projectId === project.id);
+          const linkedRequirements = requirements.filter(r => projectProposals.some(pr => pr.requirementId === r.id) || (r.industry && r.industry === project.industry));
+          const visits = recentlyAccessed.filter(e => e.targetType === "project" && e.targetId === project.id);
+          const visitorIds = Array.from(new Set(visits.map(v => v.userId)));
+          const roleOf = id => (users.find(u => u.id === id) || {}).role || "other";
+          const interest = ["investor", "entrepreneur", "startup_founder", "mentor", "freelancer"].map(role => ({
+            role,
+            count: visitorIds.filter(id => roleOf(id) === role).length
+          })).filter(x => x.count > 0);
+          // Owners must see the blank row they just added; visitors only see rows with content.
+          const allMilestones = (project.milestones || []).filter(m => m && typeof m === "object");
+          const allTeam = (project.team || []).filter(m => m && typeof m === "object");
+          const canEdit = isOwner && cu.role !== "admin";
+          const milestones = canEdit ? allMilestones : allMilestones.filter(m => m.title || m.note);
+          const team = canEdit ? allTeam : allTeam.filter(m => m.name || m.role || m.note);
+          const documents = project.documents || [];
+          const ms = milestoneProgress(milestones);
+          const stage = lifecycleOf(project);
+          const card = "bg-white rounded-2xl border border-slate-100 shadow-sm p-5";
+          const cardTitle = "text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2";
+          const cardTitleTight = "text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2";
+          return <div className="p-6 lg:p-8 max-w-5xl mx-auto pb-12">
+              <button onClick={() => setView("projects")} className="text-sm text-blue-700 hover:underline font-semibold flex items-center gap-1 mb-4">
+                <ChevronLeft className="w-4 h-4" /> Back to projects
+              </button>
+
+              <div className={`${card} mb-4`}>
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-2xl font-bold text-slate-900 leading-snug">{project.title}</h1>
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${project.status === "funded" ? "bg-emerald-100 text-emerald-700" : project.status === "in_talks" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+                        {project.status === "funded" ? "Funded" : project.status === "in_talks" ? "In talks" : "Open"}
+                      </span>
+                      <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">{project.projectType === "product" ? "Product" : "SaaS"}</span>
+                      {project.industry && <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{project.industry}</span>}
+                      {project.patented && <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">Patented</span>}
+                      {project.noveltyStatus === "cleared" && <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">Novelty cleared</span>}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {owner && owner.id !== cu.id && <button onClick={() => openMessage(owner.id)} className="text-sm px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-semibold transition-colors flex items-center gap-1.5">
+                        <MessageCircle className="w-4 h-4" /> Message founder
+                      </button>}
+                    <button onClick={() => openPatentBot(project.id, null)} className="text-sm px-4 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 font-semibold transition-colors">
+                      Verify novelty
+                    </button>
+                    <button onClick={() => toggleWatch(project.id)} className={`text-sm px-4 py-2 rounded-xl font-semibold transition-colors border ${watchedProjectIds.includes(project.id) ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" : "border-slate-200 text-slate-700 hover:bg-slate-50"}`}>
+                      {watchedProjectIds.includes(project.id) ? t("Watching") : t("Watch deal")}
+                    </button>
+                    <button onClick={() => toggleCompare(project.id)} className={`text-sm px-4 py-2 rounded-xl font-semibold transition-colors border ${compareIds.includes(project.id) ? "bg-blue-50 text-blue-700 border-blue-200" : "border-slate-200 text-slate-700 hover:bg-slate-50"}`}>
+                      {compareIds.includes(project.id) ? t("In comparison") : t("Compare")}
+                    </button>
+                    {canEdit && <button onClick={() => {
+                    startEditProject(project);
+                    setView("portfolio");
+                  }} className="text-sm px-4 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 font-semibold transition-colors flex items-center gap-1.5">
+                        <Edit2 className="w-4 h-4" /> Edit project
+                      </button>}
+                  </div>
+                </div>
+
+                {owner && <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-100">
+                    <UserAvatar user={owner} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-900 truncate">{owner.name} <span className="text-slate-400 font-normal">· {owner.position} {owner.company && `at ${owner.company}`}</span></p>
+                      <p className="text-xs text-slate-400">Posted {project.createdAt ? new Date(project.createdAt).toLocaleDateString(lang, {
+                      month: "long",
+                      year: "numeric"
+                    }) : "recently"}</p>
+                    </div>
+                    <button onClick={() => viewUserProfile(owner.id)} className="text-xs px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors flex-shrink-0">View Profile</button>
+                  </div>}
+              </div>
+
+              <div className={`${card} mb-4`}>
+                <h2 className={cardTitle}><Zap className="w-4 h-4 text-blue-700" /> Project lifecycle</h2>
+                <LifecycleStepper stage={stage} onSet={canEdit ? key => setProjectStage(project.id, key) : undefined} />
+                <p className="text-xs text-slate-400 mt-3">{canEdit ? "Click a step to move this project along its lifecycle." : "Idea → Prototype → MVP → Launched → Scaling → Funded"}</p>
+              </div>
+
+              {isOwner && (() => {
+              // Explainable investor matches for this round, computed the same way
+              // the Smart Matching page does.
+              const fits = rankInvestorsForProject(project, users.filter(u => u.role === "investor"), matchCtx).slice(0, 3);
+              if (!fits.length) return null;
+              return <div className={`${card} mb-4`}>
+                    <h2 className={cardTitle}><Target className="w-4 h-4 text-blue-700" /> Investors matched to this round</h2>
+                    <div className="grid md:grid-cols-3 gap-3">
+                      {fits.map(entry => <div key={entry.investor.id} className="bg-slate-50 rounded-xl p-3">
+                          <div className="flex items-center gap-2">
+                            <UserAvatar user={entry.investor} size="xs" />
+                            <span className="text-xs font-bold text-slate-900 truncate">{entry.investor.name}</span>
+                            <FitBadge score={entry.score} />
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1.5 truncate">{entry.investor.investmentRange || entry.investor.company}</p>
+                          <div className="mt-2">
+                            <MatchPills reasons={entry.reasons.slice(0, 2)} gaps={[]} />
+                          </div>
+                          <div className="flex gap-1.5 mt-2.5">
+                            <button onClick={() => viewUserProfile(entry.investor.id)} className="text-[11px] px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors">{t("View Profile")}</button>
+                            <button onClick={() => cu.connections.includes(entry.investor.id) ? openMessage(entry.investor.id) : sendConnectionRequest(entry.investor.id)} className="text-[11px] px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors">
+                              {cu.connections.includes(entry.investor.id) ? t("Message") : cu.pendingSent.includes(entry.investor.id) ? t("Requested") : t("Connect")}
+                            </button>
+                          </div>
+                        </div>)}
+                    </div>
+                  </div>;
+            })()}
+
+              {!isOwner && cu.role === "investor" && (() => {
+              const fit = matchBetween(cu.id, project.id);
+              if (!fit) return null;
+              return <div className={`${card} mb-4`}>
+                    <h2 className={cardTitle}>
+                      <span><Target className="w-4 h-4 text-blue-700" /> </span>
+                      <span>Your fit with this round</span>
+                      <FitBadge score={fit.score} />
+                    </h2>
+                    <MatchPills reasons={fit.reasons} gaps={fit.gaps} />
+                  </div>;
+            })()}
+
+              <div className="grid lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2 space-y-4">
+                  <div className={card}>
+                    <h2 className={cardTitle}><FileText className="w-4 h-4 text-blue-700" /> The pitch</h2>
+                    <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{project.description || "No description yet."}</p>
+                    {project.liveLink && <a href={project.liveLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-blue-700 font-semibold hover:underline mt-3">
+                        <Globe className="w-4 h-4" /> {project.liveLink.replace(/^https?:\/\//, "")}
+                      </a>}
+                  </div>
+
+                  {(() => {
+                  // In-house pitch analysis: the server reads the founder's own words and
+                  // the platform's own records, so a suggestion never invents a fact.
+                  const review = pitchReview && pitchReview.projectId === project.id ? pitchReview.data : null;
+                  const summary = projectSummary && projectSummary.projectId === project.id ? projectSummary.data : null;
+                  const tone = !review ? "" : review.verdict === "strong" ? "bg-emerald-100 text-emerald-700" : review.verdict === "workable" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700";
+                  return <div className={card}>
+                        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                          <h2 className={cardTitleTight}><Sparkles className="w-4 h-4 text-blue-700" /> Pitch intelligence</h2>
+                          <div className="flex gap-1.5">
+                            <button onClick={() => runPitchReview(project.id)} disabled={pitchBusy} className="text-xs px-3 py-1.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white rounded-lg font-semibold transition-colors">
+                              {pitchBusy ? t("Analysing…") : t("Review pitch")}
+                            </button>
+                            <button onClick={() => runProjectSummary(project.id)} disabled={summaryBusy} className="text-xs px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors disabled:opacity-60">
+                              {summaryBusy ? t("Reading the record…") : t("Project summary")}
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-400">{t("VentureLink's own checker reads this pitch against the project's records. Nothing is sent to a third-party model.")}</p>
+                        {aiError && <p className="text-xs text-rose-600 mt-2">{aiError}</p>}
+                        {review && <div className="bg-slate-50 rounded-xl p-3 mt-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">{t("Pitch score")}</span>
+                            <span className="text-sm font-bold text-slate-900">{review.score}<span className="text-slate-400 font-normal">/100</span></span>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${tone}`}>{review.verdict[0].toUpperCase() + review.verdict.slice(1)}</span>
+                          </div>
+                          <div className="w-full bg-slate-200 rounded-full overflow-hidden my-2" style={{
+                        height: "8px"
+                      }}>
+                            <div className="bg-blue-700 rounded-full" style={{
+                        width: `${review.score}%`,
+                        height: "8px",
+                        transition: "width 0.4s ease"
+                      }} />
+                          </div>
+                          {review.strengths.length > 0 && <>
+                              <p className="text-[11px] font-bold text-slate-500 mb-1">{t("What works")}</p>
+                              <MatchPills reasons={review.strengths} gaps={[]} />
+                            </>}
+                          {review.gaps.length > 0 && <div className="mt-2.5">
+                              <p className="text-[11px] font-bold text-slate-500 mb-1">{t("What to strengthen")}</p>
+                              <MatchPills reasons={[]} gaps={review.gaps} />
+                            </div>}
+                          {review.rewrite && <div className="mt-3 pt-3 border-t border-slate-200">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">{t("Suggested rewrite")}</p>
+                                <button onClick={() => {
+                              navigator.clipboard?.writeText(review.rewrite).catch(() => {});
+                              notify(t("Copied"), t("The suggested pitch is on your clipboard."));
+                            }} className="text-[11px] px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors">{t("Copy")}</button>
+                              </div>
+                              <p className="text-sm text-slate-700 leading-relaxed mt-1.5">{review.rewrite}</p>
+                              <p className="text-[11px] text-slate-400 mt-1.5">{t("Built only from this founder's own sentences and recorded platform data.")}</p>
+                            </div>}
+                        </div>}
+                        {summary && <div className="bg-slate-50 rounded-xl p-3 mt-3">
+                          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">{t("One-line summary")}</p>
+                          <p className="text-sm font-semibold text-slate-900 mt-1">{summary.oneLiner}</p>
+                          <p className="text-sm text-slate-600 leading-relaxed mt-2">{summary.paragraph}</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
+                            {summary.facts.map(f => <div key={f.label} className="bg-white rounded-lg p-2">
+                                <p className="text-[11px] text-slate-400">{f.label}</p>
+                                <p className="text-sm font-bold text-slate-900">{f.value}</p>
+                              </div>)}
+                          </div>
+                          {summary.keywords.length > 0 && <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                              <span className="text-[11px] font-bold text-slate-500">{t("Keywords")}</span>
+                              {summary.keywords.map(k => <span key={k} className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-semibold">{k}</span>)}
+                            </div>}
+                        </div>}
+                      </div>;
+            })()}
+
+                  <div className={card}>
+                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                      <h2 className={cardTitleTight}><Layers className="w-4 h-4 text-blue-700" /> Milestones ({ms.done}/{ms.total})</h2>
+                      {canEdit && <button onClick={() => addMilestone(project.id)} className="text-xs px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors flex items-center gap-1">
+                          <Plus className="w-3.5 h-3.5" /> Add milestone
+                        </button>}
+                    </div>
+                    {ms.total > 0 && <div className="w-full bg-slate-100 rounded-full overflow-hidden mb-3" style={{
+                    height: "8px"
+                  }}>
+                        <div className="bg-blue-700 rounded-full" style={{
+                      width: `${ms.pct}%`,
+                      height: "8px",
+                      transition: "width 0.4s ease"
+                    }} />
+                      </div>}
+                    {milestones.length === 0 ? <p className="text-sm text-slate-400">No milestones recorded yet.</p> : <div className="space-y-2">
+                        {milestones.map((m, idx) => <div key={idx} className="flex items-start gap-3 border border-slate-100 rounded-xl p-3">
+                            <button type="button" onClick={() => canEdit && updateMilestone(project.id, idx, {
+                          done: !m.done
+                        })} className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${m.done ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-200 text-transparent"} ${canEdit ? "hover:border-emerald-400" : "cursor-default"}`}>
+                              <Check className="w-3 h-3" />
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              {canEdit ? <input value={m.title || ""} onChange={e => updateMilestone(project.id, idx, {
+                          title: e.target.value
+                        })} placeholder="Milestone title" className="w-full px-2 py-1 border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white" /> : <p className={`text-sm font-semibold ${m.done ? "text-slate-400 line-through" : "text-slate-900"}`}>{m.title || "Untitled milestone"}</p>}
+                              {canEdit ? <input value={m.note || ""} onChange={e => updateMilestone(project.id, idx, {
+                          note: e.target.value
+                        })} placeholder="Outcome, metric or date" className="w-full mt-1.5 px-2 py-1 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white" /> : m.note && <p className="text-xs text-slate-500 mt-1">{m.note}</p>}
+                            </div>
+                            {canEdit && <button onClick={() => removeMilestone(project.id, idx)} className="p-1.5 border border-slate-200 rounded-lg hover:bg-rose-50 hover:border-rose-200 text-slate-400 hover:text-rose-600 transition-colors flex-shrink-0">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>}
+                          </div>)}
+                      </div>}
+                  </div>
+
+                  <div className={card}>
+                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                      <h2 className={cardTitleTight}><Users className="w-4 h-4 text-blue-700" /> Team ({team.length})</h2>
+                      {canEdit && <button onClick={() => addTeamMember(project.id)} className="text-xs px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors flex items-center gap-1">
+                          <Plus className="w-3.5 h-3.5" /> Add member
+                        </button>}
+                    </div>
+                    {team.length === 0 ? <p className="text-sm text-slate-400">No team members listed yet.</p> : <div className="grid md:grid-cols-2 gap-3">
+                        {team.map((m, idx) => <div key={idx} className={`border border-slate-100 rounded-xl p-3 flex items-start gap-3 ${canEdit ? "" : ""}`}>
+                            <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0 text-sm font-bold">{getInitials(m.name || m.role || "?")}</span>
+                            <div className="flex-1 min-w-0">
+                              {canEdit ? <>
+                                  <input value={m.name || ""} onChange={e => updateTeamMember(project.id, idx, {
+                              name: e.target.value
+                            })} placeholder="Full name" className="w-full px-2 py-1 border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white" />
+                                  <input value={m.role || ""} onChange={e => updateTeamMember(project.id, idx, {
+                              role: e.target.value
+                            })} placeholder="Role" className="w-full mt-1.5 px-2 py-1 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white" />
+                                  <input value={m.note || ""} onChange={e => updateTeamMember(project.id, idx, {
+                              note: e.target.value
+                            })} placeholder="One line about them" className="w-full mt-1.5 px-2 py-1 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white" />
+                                </> : <>
+                                  <p className="text-sm font-semibold text-slate-900 truncate">{m.name || "Team member"}</p>
+                                  {m.role && <p className="text-xs text-slate-500 truncate">{m.role}</p>}
+                                  {m.note && <p className="text-xs text-slate-400 mt-1">{m.note}</p>}
+                                </>}
+                            </div>
+                            {canEdit && <button onClick={() => removeTeamMember(project.id, idx)} className="p-1.5 border border-slate-200 rounded-lg hover:bg-rose-50 hover:border-rose-200 text-slate-400 hover:text-rose-600 transition-colors flex-shrink-0">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>}
+                          </div>)}
+                      </div>}
+                  </div>
+
+                  <div className={card}>
+                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                      <h2 className={cardTitleTight}><Paperclip className="w-4 h-4 text-blue-700" /> Documents ({documents.length + (project.fileDataUrl ? 1 : 0)})</h2>
+                      {canEdit && <label className="text-xs px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors cursor-pointer flex items-center gap-1">
+                          <Plus className="w-3.5 h-3.5" /> Upload document
+                          <input type="file" className="hidden" onChange={e => {
+                        attachProjectDocument(project.id, e.target.files && e.target.files[0]);
+                        e.target.value = "";
+                      }} />
+                        </label>}
+                    </div>
+                    {project.fileName && project.fileDataUrl && <div className="flex items-center gap-3 border border-slate-100 rounded-xl p-3 mb-2">
+                        <span className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center flex-shrink-0"><FileText className="w-4 h-4" /></span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 truncate">{project.fileName}</p>
+                          <p className="text-xs text-slate-400">Pitch deck</p>
+                        </div>
+                        <a href={project.fileDataUrl} download={project.fileName} className="text-xs px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors flex-shrink-0">Download</a>
+                      </div>}
+                    {documents.length === 0 && !project.fileName && <p className="text-sm text-slate-400">No documents shared yet.</p>}
+                    <div className="space-y-2">
+                      {documents.map((d, idx) => <div key={idx} className="flex items-center gap-3 border border-slate-100 rounded-xl p-3">
+                          <span className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0"><FileText className="w-4 h-4" /></span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-900 truncate">{d.name}</p>
+                            <p className="text-xs text-slate-400">{fileSizeLabel(d.size)}{d.at && <> · {formatAgo(d.at)}</>}</p>
+                          </div>
+                          <a href={d.dataUrl} download={d.name} className="text-xs px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-semibold transition-colors flex-shrink-0">Download</a>
+                          {canEdit && <button onClick={() => removeProjectDocument(project.id, idx)} className="p-1.5 border border-slate-200 rounded-lg hover:bg-rose-50 hover:border-rose-200 text-slate-400 hover:text-rose-600 transition-colors flex-shrink-0">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>}
+                        </div>)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className={card}>
+                    <h2 className={cardTitle}><Wallet className="w-4 h-4 text-blue-700" /> Funding</h2>
+                    {required > 0 ? <>
+                        <FundingProgressBar required={required} received={received} />
+                        <div className="grid grid-cols-2 gap-2 mt-3">
+                          <div className="text-center bg-slate-50 rounded-xl py-3">
+                            <div className="text-xl font-bold text-slate-900">{backers.length}</div>
+                            <div className="text-xs text-slate-500">Backers</div>
+                          </div>
+                          <div className="text-center bg-slate-50 rounded-xl py-3">
+                            <div className="text-xl font-bold text-slate-900">{pctFunded}%</div>
+                            <div className="text-xs text-slate-500">Funded</div>
+                          </div>
+                        </div>
+                      </> : <p className="text-sm text-slate-400">No funding target set.</p>}
+                    {backers.length > 0 && <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                        {backers.map(inv => {
+                      const investor = users.find(u => u.id === inv.investorId);
+                      if (!investor) return null;
+                      return <div key={inv.id} className="flex items-center gap-2">
+                              <UserAvatar user={investor} size="xs" />
+                              <span className="text-xs font-semibold text-slate-700 truncate flex-1">{investor.name}</span>
+                              <span className="text-xs text-slate-400 truncate">{investor.company}</span>
+                              <span className="text-xs font-bold text-emerald-700 flex-shrink-0">${inv.amount.toLocaleString()}</span>
+                            </div>;
+                    })}
+                      </div>}
+                  </div>
+
+                  <div className={card}>
+                    <h2 className={cardTitle}><BarChart className="w-4 h-4 text-blue-700" /> Analytics</h2>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="text-center bg-slate-50 rounded-xl py-3">
+                        <div className="text-xl font-bold text-slate-900">{visits.length}</div>
+                        <div className="text-xs text-slate-500">Views</div>
+                      </div>
+                      <div className="text-center bg-slate-50 rounded-xl py-3">
+                        <div className="text-xl font-bold text-slate-900">{visitorIds.length}</div>
+                        <div className="text-xs text-slate-500">Visitors</div>
+                      </div>
+                      <div className="text-center bg-slate-50 rounded-xl py-3">
+                        <div className="text-xl font-bold text-slate-900">{projectProposals.length}</div>
+                        <div className="text-xs text-slate-500">Proposals</div>
+                      </div>
+                      <div className="text-center bg-slate-50 rounded-xl py-3">
+                        <div className="text-xl font-bold text-slate-900">{ms.pct}%</div>
+                        <div className="text-xs text-slate-500">Milestones</div>
+                      </div>
+                    </div>
+                    {interest.length > 0 && <div className="mt-4">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Who is looking</p>
+                        <div className="space-y-1.5">
+                          {interest.map(x => <div key={x.role} className="flex items-center gap-2">
+                              <span className="text-xs text-slate-600 w-24 truncate">{ROLE_LABELS[x.role] || x.role}</span>
+                              <span className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <span className="block h-2 bg-blue-600 rounded-full" style={{
+                              width: `${Math.round(x.count / visitorIds.length * 100)}%`
+                            }} />
+                              </span>
+                              <span className="text-xs font-bold text-slate-700 w-4 text-right">{x.count}</span>
+                            </div>)}
+                        </div>
+                      </div>}
+                    <p className="text-xs text-slate-400 mt-3">{visits.length ? <>Last viewed {formatAgo(visits[visits.length - 1].at)}</> : "No views recorded yet."}</p>
+                  </div>
+
+                  <div className={card}>
+                    <h2 className={cardTitle}><Target className="w-4 h-4 text-blue-700" /> Open requirements</h2>
+                    {linkedRequirements.length === 0 ? <p className="text-sm text-slate-400">No investor requirements match this project yet.</p> : <div className="space-y-2">
+                        {linkedRequirements.slice(0, 4).map(r => {
+                      const reqInvestor = users.find(u => u.id === r.investorId);
+                      return <div key={r.id} className="border border-slate-100 rounded-xl p-3">
+                              <p className="text-sm font-semibold text-slate-900 truncate">{r.title}</p>
+                              <p className="text-xs text-slate-400 truncate">{reqInvestor ? `${reqInvestor.name}${r.budgetRange ? ` · ${r.budgetRange}` : ""}` : r.budgetRange}</p>
+                            </div>;
+                    })}
+                      </div>}
+                  </div>
+
+                  <div className={card}>
+                    <h2 className={cardTitle}><ShieldCheck className="w-4 h-4 text-blue-700" /> Patent</h2>
+                    {project.patented ? <>
+                        <p className="text-sm text-slate-600">{project.patentNumber ? <>Patent number {project.patentNumber}</> : "The founder claims a patent for this project."}</p>
+                        {project.noveltyStatus && <p className={`text-xs font-semibold mt-2 ${project.noveltyStatus === "cleared" ? "text-emerald-700" : project.noveltyStatus === "flagged" ? "text-rose-700" : "text-amber-700"}`}>{project.noveltyStatus === "cleared" ? t("Novelty cleared") : project.noveltyStatus === "flagged" ? t("Novelty flagged") : t("Novelty pending")}</p>}
+                        {project.patentProofName && <a href={project.patentProofDataUrl} download={project.patentProofName} className="inline-flex items-center gap-1.5 text-xs text-blue-700 font-semibold hover:underline mt-2">
+                            <Paperclip className="w-3.5 h-3.5" /> {project.patentProofName}
+                          </a>}
+                      </> : <p className="text-sm text-slate-400">No patent claimed for this project.</p>}
+                    {project.patented && <button onClick={() => openVerificationReport(project.id)} disabled={reportBusy} className="mt-3 w-full text-sm py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-1.5">
+                        <FileText className="w-4 h-4" /> {reportBusy ? t("Building report…") : t("Verification report")}
+                      </button>}
+                    <button onClick={() => openPatentBot(project.id, null)} className="mt-2 w-full text-sm py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 font-semibold transition-colors">
+                      Run PatentBot check
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>;
         }
 
       // ======================== VIEW USER PROFILE ========================
@@ -5413,7 +8634,7 @@ export default function App() {
                 <ChevronLeft className="w-4 h-4" /> Back to Discover
               </button>
             </div>
-            <ProfileView user={viewUser} isOwnProfile={false} onEdit={() => {}} onConnect={() => sendConnectionRequest(viewUser.id)} onMessage={() => openMessage(viewUser.id)} connectionStatus={status} matchScore={showMatch ? calcMatchScore(cu, viewUser) : undefined} avgRating={getAvgRating(viewUser.id)} reviewCount={viewedReviews.length} reviewsList={viewedReviews} />
+            <ProfileView user={viewUser} isOwnProfile={false} onEdit={() => {}} onConnect={() => sendConnectionRequest(viewUser.id)} onMessage={() => openMessage(viewUser.id)} connectionStatus={status} matchScore={showMatch ? calcMatchScore(cu, viewUser) : undefined} avgRating={getAvgRating(viewUser.id)} reviewCount={viewedReviews.length} reviewsList={viewedReviews} ownedProjects={viewedProjects} onFollow={() => toggleFollow(viewUser.id)} isFollowing={(cu.following || []).includes(viewUser.id)} followingCount={(viewUser.following || []).length} followerCount={(viewUser.followers || []).length} />
 
             {canReview && <div className="max-w-3xl mx-auto px-6 -mt-4 mb-6">
                 {reviewTargetId !== viewUser.id ? <button onClick={() => setReviewTargetId(viewUser.id)} className="flex items-center gap-2 bg-white border-2 border-emerald-200 hover:bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-xl font-semibold transition-colors text-sm">
@@ -5595,6 +8816,7 @@ export default function App() {
               {I18N_LANGS.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
             </select>
           </div>
+          <ThemePicker />
           <div className="relative">
             <button onClick={() => setNotifDropdownOpen(!notifDropdownOpen)} className="relative p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors">
               <Bell className="w-5 h-5" />
@@ -5645,12 +8867,28 @@ export default function App() {
           </div>
           {(() => {
           const botProj = projects.find(p => p.id === patentBotProjectId);
+          const botReport = noveltyReport && noveltyReport.projectId === patentBotProjectId ? noveltyReport.data : null;
+          const bandLabel = b => b === "duplicate risk" ? t("Duplicate risk") : b === "manual review" ? t("Needs manual review") : t("Below threshold");
           return <>
                 <div className="flex-1 overflow-y-auto bg-slate-50 p-4 space-y-2.5">
                   {patentBotLog.length === 0 && <p className="text-xs text-slate-400 text-center pt-8">Ask me to verify a patent, or press “Run novelty check”.{!botProj && " Open me from a patented proposal under Requirements to pick a project."}</p>}
                   {patentBotLog.map((m, i) => <div key={i} className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}>
                         <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${m.from === "user" ? "bg-blue-700 text-white rounded-br-md" : "bg-white border border-slate-200 text-slate-700 rounded-bl-md"}`}>{m.text}</div>
                       </div>)}
+                  {botReport && botReport.priorArt.length > 0 && <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-md p-3">
+                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">{t("Similarity analysis")}</p>
+                      <p className="text-[10px] text-slate-400 mb-2">{t("Closest work already on the registry, word by word:")}</p>
+                      {botReport.priorArt.slice(0, 5).map(r => <div key={r.id} className="py-1.5 border-t border-slate-100">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-bold text-slate-800 truncate flex-1">{r.title}</span>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${r.similarity >= botReport.registry.duplicateAt ? "bg-rose-50 text-rose-700" : r.similarity >= botReport.registry.reviewAt ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"}`}>{r.similarity}%</span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              <span>{t("Matched on")}</span> <span className="font-semibold text-slate-500">{r.matchedOn}</span> · <span className={`capitalize ${r.band === "duplicate risk" ? "text-rose-600 font-semibold" : "text-slate-500"}`}>{bandLabel(r.band)}</span>
+                            </p>
+                            {r.shared.length > 0 && <div className="flex flex-wrap gap-1 mt-1">{r.shared.map(w => <span key={w} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{w}</span>)}</div>}
+                          </div>)}
+                    </div>}
                   {patentBotBusy && <div className="flex justify-start"><div className="bg-white border border-slate-200 rounded-2xl rounded-bl-md px-3.5 py-2 text-xs text-slate-400">Screening…</div></div>}
                   <div ref={patentBotEndRef} />
                 </div>
@@ -5658,6 +8896,9 @@ export default function App() {
                     <p className="text-[11px] text-slate-400 truncate mb-1.5">In context: <span className="font-semibold text-slate-600">{botProj.title}</span>{botProj.patentNumber && <span className="text-slate-400"> · Patent No. {botProj.patentNumber}</span>}</p>
                     <button onClick={runPatentNoveltyCheck} disabled={patentBotBusy} className="w-full bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white text-xs font-bold py-2 rounded-xl transition-colors">
                       {patentBotBusy ? "Screening…" : "Run novelty check"}
+                    </button>
+                    <button onClick={() => openVerificationReport(botProj.id)} disabled={reportBusy} className="w-full mt-1.5 bg-white hover:bg-slate-100 disabled:opacity-60 border border-slate-200 text-slate-700 text-xs font-bold py-2 rounded-xl transition-colors flex items-center justify-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5" /> {reportBusy ? t("Building report…") : t("Verification report")}
                     </button>
                   </div>}
                 {!botProj && <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50 flex-shrink-0">
@@ -5685,6 +8926,133 @@ export default function App() {
         })()}
         </div>}
       </main>
+
+      {/* PatentBot verification report — printable record of a screening run */}
+      {reportOpen && noveltyReport && (() => {
+        const rep = noveltyReport.data;
+        const res = r => r === "pass" ? t("Pass") : r === "warn" ? t("Caution") : t("Fail");
+        const tone = r => r === "pass" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : r === "warn" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-rose-50 text-rose-700 border-rose-200";
+        const statusLabel = s => s === "cleared" ? t("Novelty cleared") : s === "review" ? t("Novelty needs manual review") : t("Novelty flagged");
+        return <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4" onClick={() => setReportOpen(false)}>
+            <div data-print-report="1" className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="bg-slate-900 px-5 py-4 flex items-start gap-3">
+                <span className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0"><ShieldCheck className="w-5 h-5 text-white" /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-white leading-tight">{t("Patent novelty verification report")}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    <span>{t("Report")}</span> {rep.id}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    <span>{t("Generated")}</span> {new Date(rep.generatedAt).toLocaleString(lang)}
+                  </p>
+                </div>
+                <button onClick={() => setReportOpen(false)} className="text-slate-400 hover:text-white p-1 transition-colors report-actions"><X className="w-4 h-4" /></button>
+              </div>
+
+              <div className="p-5 space-y-5">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{t("Subject")}</h3>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {[["Project", rep.subject.title], ["Sector", rep.subject.industry], ["Founder", rep.subject.founder], ["Company", rep.subject.company], ["Patent number", rep.subject.patentNumber], ["Proof document", rep.subject.patentProofName]].filter(x => x[1]).map(x => <div key={x[0]} className="bg-slate-50 rounded-lg px-3 py-2">
+                          <p className="text-[11px] text-slate-400">{t(x[0])}</p>
+                          <p className="text-sm font-semibold text-slate-900 break-words">{x[1]}</p>
+                        </div>)}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{t("Verdict")}</h3>
+                  <div className="bg-slate-50 rounded-xl p-3 flex items-center gap-3 flex-wrap">
+                    <div>
+                      <p className="text-[11px] text-slate-400">{t("Novelty score")}</p>
+                      <p className="text-2xl font-bold text-slate-900">{rep.score}<span className="text-sm font-normal text-slate-400">/100</span></p>
+                    </div>
+                    <span className={`text-xs font-bold px-3 py-1.5 rounded-full border capitalize ${rep.status === "cleared" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : rep.status === "review" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-rose-50 text-rose-700 border-rose-200"}`}>{statusLabel(rep.status)}</span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] text-slate-400">{t("Investment gate")}</p>
+                      <p className="text-sm font-semibold text-slate-800">{rep.verified ? t("Investing unlocked") : t("Investing locked")}</p>
+                    </div>
+                  </div>
+                  {rep.blockedBy.length > 0 && <p className="text-xs text-rose-700 mt-2">
+                      <span>{t("Blocked by")}</span> {rep.blockedBy.map(k => k === "number" ? t("the patent number / proof of filing") : k === "proof" ? t("the missing proof document") : t("prior-art overlap")).join(", ")}
+                    </p>}
+                </div>
+
+                <div>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{t("Checks")}</h3>
+                  <div className="space-y-1.5">
+                    {rep.checks.map(c => <div key={c.label} className="flex items-start gap-2 border border-slate-100 rounded-lg px-3 py-2">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 mt-0.5 ${tone(c.result)}`}>{res(c.result)}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-slate-800">{c.label}</p>
+                            {c.note && <p className="text-[11px] text-slate-500 mt-0.5">{c.note}</p>}
+                          </div>
+                          {c.value !== "" && c.value != null && <span className="text-[11px] font-semibold text-slate-500 flex-shrink-0 mt-0.5 max-w-[45%] break-words text-right">{c.label === "Lifecycle stage" ? lifecycleLabel(c.value) : c.value}</span>}
+                        </div>)}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">{t("Prior-art analysis")}</h3>
+                  <p className="text-[11px] text-slate-400 mb-2">
+                    <span>{t("Compared against")}</span> <span className="font-semibold text-slate-600">{rep.registry.poolSize}</span>{' '}
+                    <span>{t("other projects on the registry, of which")}</span> <span className="font-semibold text-slate-600">{rep.registry.patentedInPool}</span>{' '}
+                    <span>{t("claim a patent. Duplicate risk starts at")}</span> <span className="font-semibold text-slate-600">{rep.registry.duplicateAt}%</span>,{' '}
+                    <span>{t("manual review at")}</span> <span className="font-semibold text-slate-600">{rep.registry.reviewAt}%</span>.
+                  </p>
+                  {rep.priorArt.length === 0 ? <p className="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2">{t("No other registered project shares enough claim language to be cited as prior art.")}</p> : <div className="space-y-1.5">
+                      {rep.priorArt.map(r => <div key={r.id} className="border border-slate-100 rounded-lg px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-800 truncate flex-1">{r.title}</span>
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${r.similarity >= rep.registry.duplicateAt ? "bg-rose-50 text-rose-700" : r.similarity >= rep.registry.reviewAt ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{r.similarity}%</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            <span>{t("Matched on")}</span> <span className="font-semibold text-slate-500">{r.matchedOn}</span> · <span className="capitalize">{r.industry}</span>
+                            {r.patented && <> · <span>{t("patented")}</span></>}
+                          </p>
+                          {r.shared.length > 0 && <p className="text-[11px] text-slate-400 mt-1">
+                              <span>{t("Shared claim terms")}</span>: <span className="text-slate-600">{r.shared.join(", ")}</span>
+                            </p>}
+                        </div>)}
+                    </div>}
+                </div>
+
+                <div>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{t("Screening notes")}</h3>
+                  <ul className="space-y-1.5">
+                    {rep.reasons.map((r, i) => <li key={i} className="flex items-start gap-2 text-xs text-slate-600">
+                          <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${r.level === "pass" ? "bg-emerald-500" : r.level === "warn" ? "bg-amber-500" : r.level === "fail" ? "bg-rose-500" : "bg-slate-300"}`} />
+                          <span>{r.text}</span>
+                        </li>)}
+                  </ul>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <h3 className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-1.5">{t("What this report does not say")}</h3>
+                  <ul className="space-y-1.5">
+                    {rep.limits.map((l, i) => <li key={i} className="text-[11px] text-amber-900 leading-relaxed">{l}</li>)}
+                  </ul>
+                </div>
+
+                {rep.screenedBy && <p className="text-[11px] text-slate-400">
+                    <span>{t("Screened by")}</span> <span className="font-semibold text-slate-600">{rep.screenedBy.name}</span> <span>({ROLE_LABELS[rep.screenedBy.role] || rep.screenedBy.role})</span>
+                  </p>}
+
+                <div className="flex gap-2 flex-wrap report-actions">
+                  <button onClick={printNoveltyReport} className="text-sm px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-semibold transition-colors flex items-center gap-1.5">
+                    <Printer className="w-4 h-4" /> {t("Print report")}
+                  </button>
+                  <button onClick={downloadNoveltyReport} className="text-sm px-4 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 font-semibold transition-colors flex items-center gap-1.5">
+                    <Download className="w-4 h-4" /> {t("Download")}
+                  </button>
+                  <button onClick={() => setReportOpen(false)} className="text-sm px-4 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 font-semibold transition-colors">
+                    {t("Close")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>;
+      })()}
 
       {/* New message notification popup (shown on login) */}
       {showNotifPopup && notifPreview.length > 0 && <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4" onClick={() => setShowNotifPopup(false)}>
@@ -5717,11 +9085,19 @@ export default function App() {
         </div>}
 
       {/* Success toast: offer letter / agreement sent */}
-      {successNotice && <div className="fixed bottom-6 left-6 z-50 flex items-start gap-2.5 bg-white border border-emerald-200 shadow-2xl text-emerald-700 pl-4 pr-3 py-3 rounded-2xl max-w-sm">
-          <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <p className="text-sm font-semibold leading-snug">{successNotice}</p>
-          <button onClick={() => setSuccessNotice("")} className="text-emerald-400 hover:text-emerald-700 p-0.5 flex-shrink-0"><X className="w-4 h-4" /></button>
-        </div>}
+      {successNotice && (() => {
+      const notice = typeof successNotice === "string" ? {
+        text: successNotice
+      } : successNotice;
+      return <div className="fixed bottom-6 left-6 z-50 flex items-start gap-2.5 bg-white border border-emerald-200 shadow-2xl text-emerald-700 pl-4 pr-3 py-3 rounded-2xl max-w-sm">
+              <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                {notice.title && <p className="text-sm font-bold leading-snug">{notice.title}</p>}
+                <p className={`${notice.title ? "text-xs" : "text-sm"} font-semibold leading-snug ${notice.title ? "text-emerald-600 mt-0.5" : ""}`}>{notice.text}{notice.entity && <>&nbsp;{notice.entity}</>}</p>
+              </div>
+              <button onClick={() => setSuccessNotice("")} className="text-emerald-400 hover:text-emerald-700 p-0.5 flex-shrink-0"><X className="w-4 h-4" /></button>
+            </div>;
+    })()}
 
       {/* Agreement details prompt: shown whenever an agreement is about to be made */}
       {agreementModal && (() => {

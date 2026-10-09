@@ -1,0 +1,835 @@
+/* Utilities the precompiled Tailwind sheet (app.css) does not carry.
+   app.css is a build artefact of the original source, so any class introduced
+   by a later feature has no rule for it and renders unstyled. These rules are
+   written in the same Tailwind v4 idiom (same --spacing, --color-* and
+   --radius variables) so the theme engine in themes.js keeps recolouring them,
+   and so nothing here can change how an existing styled class behaves. */
+
+/* Palette entries the sheet never emitted, because the original build used no
+   class of that shade. Values are Tailwind v4's own oklch defaults. */
+:root {
+  --color-indigo-50: oklch(96.2% .018 272.314);
+  --color-indigo-100: oklch(93% .034 272.847);
+  --color-indigo-200: oklch(87% .065 274.036);
+  --color-indigo-700: oklch(45.7% .24 277.023);
+  --color-violet-50: oklch(96.9% .016 293.756);
+  --color-violet-600: oklch(49.6% .265 303.247);
+  --color-sky-50: oklch(97.7% .013 236.62);
+  --color-amber-800: oklch(47.3% .137 46.209);
+  --color-emerald-400: oklch(76.5% .177 191.491);
+  --color-blue-500: oklch(62.3% .214 259.815);
+}
+
+/* Colour utilities */
+/* The sheet only carried hover:bg-rose-50, so the plain tint used by the
+   error banners now has a rule. */
+.bg-rose-50 {
+  background-color: var(--color-rose-50);
+}
+.bg-indigo-50 {
+  background-color: var(--color-indigo-50);
+}
+.bg-indigo-100 {
+  background-color: var(--color-indigo-100);
+}
+.border-indigo-200 {
+  border-color: var(--color-indigo-200);
+}
+.text-indigo-700 {
+  color: var(--color-indigo-700);
+}
+.bg-violet-50 {
+  background-color: var(--color-violet-50);
+}
+.bg-sky-50 {
+  background-color: var(--color-sky-50);
+}
+.bg-emerald-200 {
+  background-color: var(--color-emerald-200);
+}
+.text-amber-800 {
+  color: var(--color-amber-800);
+}
+.text-blue-500 {
+  color: var(--color-blue-500);
+}
+.text-emerald-400 {
+  color: var(--color-emerald-400);
+}
+.text-slate-800 {
+  color: var(--color-slate-800);
+}
+.border-slate-300 {
+  border-color: var(--color-slate-300);
+}
+.bg-slate-800 {
+  background-color: var(--color-slate-800);
+}
+.bg-slate-900 {
+  background-color: var(--color-slate-900);
+}
+.border-slate-700 {
+  border-color: var(--color-slate-700);
+}
+.bg-slate-900\/60 {
+  background-color: #0f172a99;
+  background-color: color-mix(in oklab, var(--color-slate-900) 60%, transparent);
+}
+.hover\:bg-slate-800:hover {
+  background-color: var(--color-slate-800);
+}
+.focus\:ring-emerald-500:focus {
+  --tw-ring-color: var(--color-emerald-500, oklch(69.6% .17 162.48));
+}
+.divide-slate-100 > :not(:last-child) {
+  border-color: var(--color-slate-100);
+}
+
+/* Opacity + disabled state */
+.disabled\:opacity-50:disabled {
+  opacity: .5;
+}
+.disabled\:opacity-60:disabled {
+  opacity: .6;
+}
+
+/* Spacing */
+.-mt-1 {
+  margin-top: calc(var(--spacing) * -1);
+}
+.mb-3\.5 {
+  margin-bottom: calc(var(--spacing) * 3.5);
+}
+.my-3 {
+  margin-block: calc(var(--spacing) * 3);
+}
+.my-4 {
+  margin-block: calc(var(--spacing) * 4);
+}
+.p-0\.5 {
+  padding: calc(var(--spacing) * .5);
+}
+.p-1 {
+  padding: calc(var(--spacing) * 1);
+}
+.p-1\.5 {
+  padding: calc(var(--spacing) * 1.5);
+}
+.p-7 {
+  padding: calc(var(--spacing) * 7);
+}
+.pb-1 {
+  padding-bottom: calc(var(--spacing) * 1);
+}
+.pb-1\.5 {
+  padding-bottom: calc(var(--spacing) * 1.5);
+}
+.pl-1 {
+  padding-left: calc(var(--spacing) * 1);
+}
+.pl-1\.5 {
+  padding-left: calc(var(--spacing) * 1.5);
+}
+.pl-4 {
+  padding-left: calc(var(--spacing) * 4);
+}
+.pr-3 {
+  padding-right: calc(var(--spacing) * 3);
+}
+.pr-5 {
+  padding-right: calc(var(--spacing) * 5);
+}
+.pr-9 {
+  padding-right: calc(var(--spacing) * 9);
+}
+.pt-3 {
+  padding-top: calc(var(--spacing) * 3);
+}
+.pt-6 {
+  padding-top: calc(var(--spacing) * 6);
+}
+.pt-8 {
+  padding-top: calc(var(--spacing) * 8);
+}
+.px-1\.5 {
+  padding-inline: calc(var(--spacing) * 1.5);
+}
+.space-y-1 > :not(:last-child) {
+  --tw-space-y-reverse: 0;
+  margin-block-start: calc(calc(var(--spacing) * 1) * var(--tw-space-y-reverse));
+  margin-block-end: calc(calc(var(--spacing) * 1) * calc(1 - var(--tw-space-y-reverse)));
+}
+
+/* Sizing */
+.h-4\.5 {
+  height: calc(var(--spacing) * 4.5);
+}
+.w-4\.5 {
+  width: calc(var(--spacing) * 4.5);
+}
+.h-9 {
+  height: calc(var(--spacing) * 9);
+}
+.w-9 {
+  width: calc(var(--spacing) * 9);
+}
+.h-px {
+  height: 1px;
+}
+.h-\[34px\] {
+  height: 34px;
+}
+.w-32 {
+  width: calc(var(--spacing) * 32);
+}
+.w-64 {
+  width: calc(var(--spacing) * 64);
+}
+.w-\[360px\] {
+  width: 360px;
+}
+.max-h-64 {
+  max-height: calc(var(--spacing) * 64);
+}
+.max-h-\[92vh\] {
+  max-height: 92vh;
+}
+.max-w-6xl {
+  max-width: 72rem;
+}
+.max-w-full {
+  max-width: 100%;
+}
+.max-w-\[420px\] {
+  max-width: 420px;
+}
+.max-w-\[calc\(100\%-3rem\)\] {
+  max-width: calc(100% - 3rem);
+}
+
+/* Position, layering, overflow */
+.bottom-6 {
+  bottom: calc(var(--spacing) * 6);
+}
+.left-6 {
+  left: calc(var(--spacing) * 6);
+}
+.right-6 {
+  right: calc(var(--spacing) * 6);
+}
+.right-3 {
+  right: calc(var(--spacing) * 3);
+}
+.top-full {
+  top: 100%;
+}
+.z-30 {
+  z-index: 30;
+}
+.overflow-x-auto {
+  overflow-x: auto;
+}
+
+/* Shape and text behaviour */
+.rounded {
+  border-radius: .25rem;
+}
+.rounded-3xl {
+  border-radius: 1.5rem;
+}
+.rounded-bl-md {
+  border-bottom-left-radius: calc(var(--radius) - 8px);
+}
+.text-\[11px\] {
+  font-size: 11px;
+}
+.text-\[22px\] {
+  font-size: 22px;
+}
+.italic {
+  font-style: italic;
+}
+.underline {
+  text-decoration-line: underline;
+}
+.underline-offset-2 {
+  text-underline-offset: 2px;
+}
+.whitespace-pre-line {
+  white-space: pre-line;
+}
+.select-none {
+  user-select: none;
+}
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* Wide-screen layout steps used by the newer screens */
+@media (min-width: 64rem) {
+  .lg\:col-span-3 {
+    grid-column: span 3 / span 3;
+  }
+  .lg\:flex-row {
+    flex-direction: row;
+  }
+  .lg\:grid-cols-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+/* Project page: lifecycle stepper, milestone bars, interest chart */
+.h-2 {
+  height: calc(var(--spacing) * 2);
+}
+.w-24 {
+  width: calc(var(--spacing) * 24);
+}
+.space-y-1\.5 > :not(:last-child) {
+  --tw-space-y-reverse: 0;
+  margin-block-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));
+  margin-block-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)));
+}
+.last\:flex-none:last-child {
+  flex: none;
+}
+
+/* Funding tracker, watchlist and matching panels */
+.-mt-0\.5 {
+  margin-top: calc(var(--spacing) * -0.5);
+}
+.ml-1 {
+  margin-left: var(--spacing);
+}
+.ml-1\.5 {
+  margin-left: calc(var(--spacing) * 1.5);
+}
+.ml-2 {
+  margin-left: calc(var(--spacing) * 2);
+}
+.mr-0\.5 {
+  margin-right: calc(var(--spacing) * 0.5);
+}
+.inline {
+  display: inline;
+}
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.text-violet-600 {
+  color: var(--color-violet-600);
+}
+@media (min-width: 48rem) {
+  .md\:grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Verification report and pitch-intelligence cards */
+.bg-slate-200 {
+  background-color: var(--color-slate-200);
+}
+.break-words {
+  overflow-wrap: break-word;
+}
+.capitalize {
+  text-transform: capitalize;
+}
+.max-h-\[90vh\] {
+  max-height: 90vh;
+}
+.max-w-\[45\%\] {
+  max-width: 45%;
+}
+.my-2 {
+  margin-top: calc(var(--spacing) * 2);
+  margin-bottom: calc(var(--spacing) * 2);
+}
+.tracking-wide {
+  letter-spacing: .025em;
+}
+
+/* Printing the PatentBot verification report: the modal alone goes to paper,
+   so the rest of the SPA is hidden rather than re-laid out. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  [data-print-report],
+  [data-print-report] * {
+    visibility: visible;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  [data-print-report] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: none;
+    overflow: visible;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  [data-print-report] .report-actions {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Two-step sign-in (identifier -> password -> verification code).
+   A provider-style flow: one question per screen, a bordered card, a filled
+   text field, and Back / Next at the bottom. Written by hand because the
+   precompiled Tailwind sheet has no rule for any of these classes.
+   --------------------------------------------------------------------------- */
+.gs-card {
+  width: 100%;
+  max-width: 448px;
+  background: #fff;
+  border: 1px solid #d5d9e2;
+  border-radius: 12px;
+  padding: 44px 40px 32px;
+  box-shadow: 0 2px 6px rgb(32 33 36 / .12);
+  font-family: Roboto, Arial, Helvetica, sans-serif;
+  color: #1f1f1f;
+}
+.gs-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: #1f1f1f;
+}
+.gs-sub {
+  margin: 0 0 26px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #5e636b;
+}
+.gs-sub a {
+  color: #1a56c4;
+  font-weight: 500;
+  text-decoration: none;
+}
+.gs-field {
+  position: relative;
+  margin-bottom: 4px;
+}
+.gs-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #5e636b;
+  margin-bottom: 6px;
+}
+.gs-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 15px;
+  color: #1f1f1f;
+  background: #f7f8fa;
+  border: 1px solid #c9ced8;
+  border-radius: 6px;
+  padding: 13px 14px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s, background-color .15s;
+}
+.gs-input:focus {
+  background: #fff;
+  border-color: #1a56c4;
+  box-shadow: inset 0 0 0 1px #1a56c4;
+}
+.gs-input::placeholder {
+  color: #9aa0a8;
+}
+/* one-time-code boxes: spaced digits, like a provider SMS entry */
+.gs-input.gs-otp {
+  letter-spacing: .55em;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 500;
+  padding-left: calc(14px + .55em);
+}
+.gs-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a56c4;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.gs-link:hover {
+  text-decoration: none;
+}
+.gs-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 40px;
+}
+.gs-btn {
+  appearance: none;
+  border: 1px solid #c9ced8;
+  background: #fff;
+  color: #1a56c4;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 9px 22px;
+  min-width: 72px;
+  cursor: pointer;
+  transition: background-color .15s, border-color .15s;
+}
+.gs-btn:hover {
+  background: #f1f5fd;
+  border-color: #b9d0f4;
+}
+.gs-btn.gs-primary {
+  background: #1a56c4;
+  border-color: #1a56c4;
+  color: #fff;
+}
+.gs-btn.gs-primary:hover {
+  background: #1648a8;
+  border-color: #1648a8;
+}
+.gs-btn:disabled {
+  background: #eef0f3;
+  border-color: #e3e6ea;
+  color: #9aa0a8;
+  cursor: not-allowed;
+}
+/* the small pill that reminds you which account you are signing in as */
+.gs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  background: #eef3fc;
+  border: 1px solid #d6e2f7;
+  border-radius: 18px;
+  padding: 4px 10px 4px 4px;
+  font-size: 13px;
+  color: #1f1f1f;
+}
+.gs-chip .gs-avatar {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+.gs-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+  background: #1a56c4;
+}
+.gs-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 8px;
+  cursor: pointer;
+  font: inherit;
+  color: #1f1f1f;
+}
+.gs-row:hover {
+  background: #f2f5f9;
+}
+.gs-row.gs-on {
+  background: #e8f0fd;
+}
+.gs-row-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gs-row-sub {
+  display: block;
+  font-size: 12.5px;
+  color: #5e636b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gs-divider {
+  height: 1px;
+  background: #e4e7ec;
+  margin: 14px 0;
+}
+.gs-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 26px;
+  padding-top: 14px;
+  border-top: 1px solid #eceef2;
+  font-size: 11.5px;
+  color: #7c828b;
+}
+.gs-note {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #5e636b;
+  background: #f7f8fa;
+  border: 1px solid #e6e8ec;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.gs-error {
+  font-size: 13px;
+  font-weight: 500;
+  color: #b3261e;
+  margin-top: 10px;
+}
+.gs-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #5e636b;
+  margin-top: 14px;
+  cursor: pointer;
+}
+.gs-remember input {
+  width: 16px;
+  height: 16px;
+  accent-color: #1a56c4;
+}
+/* address suggestions — shown only while the typed email matches a remembered one */
+.gs-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  background: #fff;
+  border: 1px solid #d9dde4;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(32, 33, 36, .18);
+  padding: 4px;
+  margin-top: 0;
+}
+.gs-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 8px;
+  padding: 2px 4px 2px 2px;
+}
+.gs-suggest-item.gs-on {
+  background: #eef3fc;
+}
+.gs-suggest-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 6px;
+  font: inherit;
+  font-size: 13px;
+  color: #1f1f1f;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.gs-suggest-pick:hover {
+  background: #f2f5f9;
+}
+.gs-suggest-pick .gs-avatar {
+  width: 26px;
+  height: 26px;
+  font-size: 11px;
+}
+.gs-suggest-text {
+  min-width: 0;
+  overflow: hidden;
+}
+.gs-saved-x {
+  border: 0;
+  background: none;
+  color: #9aa0a8;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 0 0 2px;
+}
+.gs-saved-x:hover {
+  color: #b3261e;
+}
+/* The few utility tokens the two-step card relies on that the pre-compiled
+   Tailwind sheet does not already carry. */
+.bg-transparent {
+  background-color: transparent;
+}
+.border-0 {
+  border-width: 0;
+}
+.mb-7 {
+  margin-bottom: 1.75rem;
+}
+.text-\[11\.5px\] {
+  font-size: 11.5px;
+}
+.text-\[13px\] {
+  font-size: 13px;
+}
+.accent-blue-700 {
+  accent-color: #1d4ed8;
+}
+.bg-blue-50\/40 {
+  background-color: rgb(239 246 255 / .4);
+}
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.tracking-\[0\.3em\] {
+  letter-spacing: .3em;
+}
+@media (max-width: 480px) {
+  .gs-card {
+    padding: 30px 22px 24px;
+    border-radius: 10px;
+  }
+  .gs-title {
+    font-size: 20px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Account panels on the profile. Each of the four panels holds a long form or
+   a long list, so they open one at a time from this row instead of stacking
+   into one endless scroll. The small pill on every tab previews what is inside.
+   --------------------------------------------------------------------------- */
+.vl-panel-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #e6e8ec;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgb(32 33 36 / .06);
+}
+.vl-panel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+.vl-panel-tab-hint {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.vl-panel-tab.vl-panel-tab-on .vl-panel-tab-hint {
+  color: #fff;
+  background: rgb(255 255 255 / .22);
+}
+.vl-panel-tab:hover {
+  background: #f1f5f9;
+  color: #334155;
+}
+.vl-panel-tab.vl-panel-tab-on {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+.vl-panel-tab.vl-panel-tab-on:hover {
+  background: #1e40af;
+  color: #fff;
+}
+
+/* ---------------------------------------------------------------------------
+   Spacing pass. The screens reuse a few tight utility steps (p-5 cards, gap-4
+   grids, max-w-3xl columns) all over the site, which reads as cramped on a
+   wide window. These rules restate those same steps one notch looser, so the
+   content keeps its place and simply gets room to breathe. Nothing here hides
+   or moves a feature — it is the same detail with more air around it.
+   --------------------------------------------------------------------------- */
+/* cards on the content pages */
+[class~="bg-white"][class~="rounded-2xl"][class~="p-5"] {
+  padding: 1.625rem;
+}
+/* heading-to-body gap inside those cards */
+[class~="font-bold"][class~="mb-3"],
+[class~="font-bold"][class~="mb-4"] {
+  margin-bottom: 1.125rem;
+}
+/* stacked sections and card columns */
+[class~="grid"][class~="gap-4"] {
+  gap: 1.5rem;
+}
+[class~="grid"][class~="gap-5"] {
+  gap: 1.75rem;
+}
+[class~="space-y-4"] > :not(:last-child),
+[class~="space-y-5"] > :not(:last-child) {
+  margin-bottom: 1.75rem;
+}
+/* the two steps the compiled sheet never carried */
+.space-y-3\.5 > :not(:last-child) {
+  margin-bottom: .875rem;
+}
+.space-y-6 > :not(:last-child) {
+  margin-bottom: 1.5rem;
+}
+/* the page wrappers themselves */
+[class~="p-6"][class~="lg:p-8"] {
+  padding: 2.25rem 2.5rem 4rem;
+}
+/* on a wide window the columns stop far too early */
+@media (min-width: 1280px) {
+  [class~="max-w-3xl"] {
+    max-width: 52rem;
+  }
+  [class~="max-w-4xl"] {
+    max-width: 60rem;
+  }
+  [class~="max-w-5xl"] {
+    max-width: 72rem;
+  }
+}
+
+

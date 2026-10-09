@@ -10,6 +10,8 @@
 // swap through "#"-templates and sibling-node joining.
 // ---------------------------------------------------------------------------
 
+import { applyNames } from "./i18n-names.js";
+
 const ATTRS = ["placeholder", "title", "alt", "aria-label"];
 const NUM_RUN = /\d[\d.,]*/g;
 const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "TEXTAREA", "TITLE", "NOSCRIPT"]);
@@ -48,23 +50,28 @@ function cellsFor(text) {
 
 /** Translate one English UI string; returns the input unchanged when unknown. */
 export function translateText(text, lang) {
+  if (!lang || lang === "en") return text;
   const trimmed = normalise(text);
-  if (!trimmed || !lang || lang === "en" || !phraseIndex) return text;
-  const cells = cellsFor(trimmed);
-  if (!cells) return text;
-  const col = columnFor.indexOf(lang);
-  if (col <= 0) return text;
-  const target = cells[col];
-  if (!target || normalise(target) === trimmed) return text;
-  let out = target;
-  if (out.includes("#")) {
-    const numbers = trimmed.match(NUM_RUN) || [];
-    let i = 0;
-    out = out.replace(/#/g, () => numbers[i++] ?? "");
+  let out = text;
+  // 1. the interface phrase, when the catalogue knows it
+  const cells = trimmed && phraseIndex ? cellsFor(trimmed) : null;
+  if (cells) {
+    const col = columnFor.indexOf(lang);
+    const target = col > 0 ? cells[col] : null;
+    if (target && normalise(target) !== trimmed) {
+      out = target;
+      if (out.includes("#")) {
+        const numbers = trimmed.match(NUM_RUN) || [];
+        let i = 0;
+        out = out.replace(/#/g, () => numbers[i++] ?? "");
+      }
+      const lead = /^[\s]*/.exec(text)[0];
+      const trail = /[\s]*$/.exec(text)[0];
+      out = lead + out + (trail && !out.endsWith(trail) ? trail : "");
+    }
   }
-  const lead = /^[\s]*/.exec(text)[0];
-  const trail = /[\s]*$/.exec(text)[0];
-  return lead + out + (trail && !out.endsWith(trail) ? trail : "");
+  // 2. member names, which are never catalogue phrases
+  return applyNames(out, lang);
 }
 
 // Node bookkeeping so switching languages back and forth never loses the
@@ -184,8 +191,10 @@ export function startUiTranslator(root, lang) {
 
   const pending = new Set();
   let frame = 0;
+  let timer = 0;
   const flush = () => {
     frame = 0;
+    timer = 0;
     const work = [...pending];
     pending.clear();
     for (const target of work) {
@@ -202,7 +211,11 @@ export function startUiTranslator(root, lang) {
   };
   const schedule = node => {
     pending.add(node);
-    if (!frame) frame = requestAnimationFrame(flush);
+    if (frame || timer) return;
+    // An app tab that is not in the foreground never gets an animation frame,
+    // so the timer is what keeps screens translated while the user reads them.
+    frame = requestAnimationFrame(flush);
+    timer = setTimeout(flush, 32);
   };
 
   const observer = new MutationObserver(records => {
@@ -230,6 +243,7 @@ export function startUiTranslator(root, lang) {
   });
   return () => {
     if (frame) cancelAnimationFrame(frame);
+    if (timer) clearTimeout(timer);
     observer.disconnect();
   };
 }

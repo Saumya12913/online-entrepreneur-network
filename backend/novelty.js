@@ -164,3 +164,107 @@ export function screenNovelty(project, allOthers) {
   }
   return { status, score, reasons, matches: matches.slice(0, 3), verified: status === "cleared", blockedBy: failed };
 }
+
+// ---------------------------------------------------------------------------
+// Similarity analysis + verification report (additive — screenNovelty above is
+// unchanged, so the PatentBot chat flow keeps behaving exactly as before).
+// ---------------------------------------------------------------------------
+
+const DUPLICATE_AT = 70;
+const REVIEW_AT = 45;
+
+function sharedTerms(a, b) {
+  const setB = new Set(b);
+  const seen = new Set();
+  const out = [];
+  for (const t of a) if (setB.has(t) && !seen.has(t)) { seen.add(t); out.push(t); }
+  return out;
+}
+
+/** Word-set overlap of one project against the rest of the registry, term by term. */
+export function priorArtAnalysis(project, allOthers) {
+  const titleTokens = normalize(project.title);
+  const descTokens = normalize(`${project.title} ${project.description}`);
+  const rows = [];
+  for (const other of allOthers) {
+    if (!other || other.id === project.id) continue;
+    const oTitle = normalize(other.title);
+    const oDesc = normalize(`${other.title} ${other.description}`);
+    const titleSim = jaccard(titleTokens, oTitle);
+    const descSim = jaccard(descTokens, oDesc);
+    const similarity = Math.round(Math.max(titleSim, descSim * 0.8) * 100);
+    const shared = sharedTerms(descTokens, oDesc).slice(0, 8);
+    // Whole-set overlap is a blunt measure once pitches are only 15-30 words
+    // long, so a single shared claim term is worth showing an investor even
+    // though it barely moves the novelty score.
+    if (shared.length === 0 && similarity < 5) continue;
+    rows.push({
+      id: other.id,
+      title: other.title,
+      industry: other.industry || "",
+      patented: !!other.patented,
+      similarity,
+      matchedOn: titleSim >= descSim * 0.8 ? "title" : "description",
+      shared,
+      sharedCount: shared.length,
+      band: similarity >= DUPLICATE_AT ? "duplicate risk" : similarity >= REVIEW_AT ? "manual review" : "below threshold"
+    });
+  }
+  rows.sort((a, b) => b.similarity - a.similarity || b.sharedCount - a.sharedCount);
+  return rows.slice(0, 6);
+}
+
+/**
+ * A printable, self-contained record of what was screened and why the verdict
+ * came out as it did. `verdict` is the output of screenNovelty() for the same
+ * project, so the report can never disagree with what PatentBot said.
+ */
+export function buildVerificationReport(project, allOthers, verdict, meta = {}) {
+  const pool = allOthers.filter(o => o && o.id !== project.id);
+  const priorArt = priorArtAnalysis(project, allOthers);
+  const patentCheck = validatePatentNumber(project.patentNumber);
+  const descTokens = normalize(project.description);
+  const numberClash = pool.find(o => String(o.patentNumber || "").trim() && String(o.patentNumber).trim().toUpperCase().replace(/\s+/g, "") === String(project.patentNumber || "").trim().toUpperCase().replace(/\s+/g, ""));
+
+  const stage = project.lifecycle || (project.status === "funded" ? "funded" : project.status === "in_talks" ? "scaling" : "mvp");
+  const checks = [
+    { label: "Patent claimed on the project", value: "", result: project.patented ? "pass" : "fail" },
+    { label: "Patent number format", value: project.patentNumber || "", result: patentCheck.ok ? "pass" : "fail", note: patentCheck.reason },
+    { label: "Number already used by another project", value: numberClash ? numberClash.title : "", result: numberClash ? "fail" : "pass" },
+    { label: "Proof document attached", value: project.patentProofName || "", result: project.patentProofName || project.patentProofDataUrl ? "pass" : "fail" },
+    { label: "Closest prior art on the registry", value: priorArt.length ? `${priorArt[0].similarity}%` : "0%", result: priorArt.length && priorArt[0].similarity >= DUPLICATE_AT ? "fail" : priorArt.length && priorArt[0].similarity >= REVIEW_AT ? "warn" : "pass", note: priorArt[0] ? priorArt[0].title : "" },
+    { label: "Technical description depth", value: String(descTokens.length), result: descTokens.length < 15 ? "warn" : "pass" },
+    { label: "Lifecycle stage", value: stage, result: project.lifecycle ? "pass" : "warn", note: project.lifecycle ? "" : "Derived from the project status; the founder has not moved the lifecycle stepper yet." },
+    { label: "Milestones recorded", value: String((project.milestones || []).length), result: (project.milestones || []).length ? "pass" : "warn" }
+  ];
+
+  return {
+    id: `VLR-${String(project.id).replace(/[^A-Za-z0-9]/g, "").slice(-6).toUpperCase()}-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`,
+    generatedAt: new Date().toISOString(),
+    screenedBy: meta.screenedBy || null,
+    subject: {
+      title: project.title,
+      industry: project.industry || "",
+      founder: meta.founder || "",
+      company: meta.company || "",
+      status: project.status || "",
+      patentNumber: project.patentNumber || "",
+      patentProofName: project.patentProofName || "",
+      noveltyStatus: project.noveltyStatus || "pending"
+    },
+    registry: { poolSize: pool.length, patentedInPool: pool.filter(o => o.patented).length, duplicateAt: DUPLICATE_AT, reviewAt: REVIEW_AT },
+    priorArt,
+    checks,
+    score: verdict.score,
+    status: verdict.status,
+    verified: verdict.verified,
+    blockedBy: verdict.blockedBy || [],
+    reasons: verdict.reasons,
+    limits: [
+      "This screen compares the claim against the projects registered on this platform. It is not a search of worldwide patent databases.",
+      "The score is a decision aid for investors using VentureLink. It is not legal advice and is not a patentability opinion from any patent office.",
+      "A cleared verdict means no earlier claim on this registry anticipates this one and the filed number matches a real office format. It does not grant or confer any right.",
+      "Every figure in this report is recomputed from the project record at the time of screening; re-run PatentBot after editing the project."
+    ]
+  };
+}

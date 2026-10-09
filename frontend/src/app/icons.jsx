@@ -299,3 +299,136 @@ export function Trash2({
       <path d="M10 11v5M14 11v5" />
     </svg>;
 }
+export function Palette({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M12 3a9 9 0 1 0 0 18c1.7 0 2-.9 1.4-1.7-.6-.8-.3-1.8.6-1.8H16a5 5 0 0 0 5-5c0-5.5-4-9.5-9-9.5Z" />
+      <circle cx="7.5" cy="12" r="1" />
+      <circle cx="10" cy="8" r="1" />
+      <circle cx="14.5" cy="8.5" r="1" />
+      <circle cx="16.5" cy="12" r="1" />
+    </svg>;
+}
+export function GraduationCap({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M2.5 9 12 4.5 21.5 9 12 13.5 2.5 9Z" />
+      <path d="M6 11v4.5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5V11" />
+      <path d="M21.5 9v5" />
+    </svg>;
+}
+export function Award({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <circle cx="12" cy="9" r="5.5" />
+      <path d="M9 13.8 7.5 21l4.5-2.5L16.5 21 15 13.8" />
+    </svg>;
+}
+export function UserCheck({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M15.5 20v-1.8a4 4 0 0 0-4-4H6.8a4 4 0 0 0-4 4V20" />
+      <circle cx="9.2" cy="7.6" r="3.8" />
+      <path d="M17 11.5 19.2 14 23.5 9.5" />
+    </svg>;
+}
+export function UserX({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M15.5 20v-1.8a4 4 0 0 0-4-4H6.8a4 4 0 0 0-4 4V20" />
+      <circle cx="9.2" cy="7.6" r="3.8" />
+      <path d="M17.5 8.5 22 13M22 8.5 17.5 13" />
+    </svg>;
+}
+export function Sparkles({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M11 3.5 12.7 8l4.5 1.7-4.5 1.7L11 15.9 9.3 11.4 4.8 9.7 9.3 8 11 3.5Z" />
+      <path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2Z" />
+    </svg>;
+}
+export function Layers({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M12 3.5 21 8l-9 4.5L3 8l9-4.5Z" />
+      <path d="M3.5 12.5 12 16.8l8.5-4.3" />
+      <path d="M3.5 16.8 12 21l8.5-4.2" />
+    </svg>;
+}
+export function BarChart({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M4 20h16" />
+      <path d="M6.5 20v-6M11.5 20V7M16.5 20v-9" />
+    </svg>;
+}
+export function Paperclip({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M20 11.5 12.2 19a4.6 4.6 0 0 1-6.5-6.5l7.6-7.5a3.1 3.1 0 0 1 4.4 4.4L9.8 16.8a1.6 1.6 0 0 1-2.2-2.2l7-7" />
+    </svg>;
+}
+export function FileText({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M14 3.5H7.5A1.5 1.5 0 0 0 6 5v14a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 18 19V7.5L14 3.5Z" />
+      <path d="M13.6 3.7V8h4.2" />
+      <path d="M9 12.5h6M9 16h6" />
+    </svg>;
+}
+export function Target({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="4.5" />
+      <circle cx="12" cy="12" r="1" />
+    </svg>;
+}
+export function Printer({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M7 9V4.5h10V9" />
+      <path d="M5.5 9h13a1.5 1.5 0 0 1 1.5 1.5v5H17v-2H7v2H4v-5A1.5 1.5 0 0 1 5.5 9Z" />
+      <path d="M7 14.5h10V20H7v-5.5Z" />
+    </svg>;
+}
+export function Download({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <path d="M12 4v10" />
+      <path d="m8 10.5 4 4 4-4" />
+      <path d="M5 19h14" />
+    </svg>;
+}
+export function Monitor({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <rect x="3" y="4.5" width="18" height="11.5" rx="1.5" />
+      <path d="M9 20h6" />
+      <path d="M12 16v4" />
+    </svg>;
+}
+export function KeyRound({
+  className
+}) {
+  return <svg {...base} className={className}>
+      <circle cx="8.5" cy="15.5" r="4" />
+      <path d="M11.4 12.6 20 4" />
+      <path d="M16.5 7.5 19 10" />
+      <path d="M14 5 16.5 7.5" />
+    </svg>;
+}

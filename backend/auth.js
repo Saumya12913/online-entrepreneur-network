@@ -21,22 +21,40 @@ export function verifyPassword(plain, stored) {
   return bcrypt.compareSync(plain, stored);
 }
 
-export function signToken(user) {
-  return jwt.sign({ sub: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: TOKEN_TTL });
+export function signToken(user, jti) {
+  return jwt.sign({ sub: user.id, email: user.email, role: user.role, jti }, JWT_SECRET, { expiresIn: TOKEN_TTL });
 }
 
 // Express middleware: requires "Authorization: Bearer <token>".
-export function authMiddleware(req, res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token) return res.status(401).json({ error: "Missing token" });
-  try {
-    req.auth = jwt.verify(token, JWT_SECRET);
+//
+// With a session resolver it also honours sign-out: a token whose `jti` was
+// revoked stops working immediately, even inside its validity window. Tokens
+// minted before sessions existed carry no jti and keep working, so nobody is
+// logged out by this change.
+export function createAuthMiddleware({ resolveSession, onSeen } = {}) {
+  return async function authMiddleware(req, res, next) {
+    const header = req.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (!token) return res.status(401).json({ error: "Missing token" });
+    let payload;
+    try {
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+    req.auth = payload;
+    if (resolveSession && payload.jti) {
+      const session = await resolveSession(payload.jti);
+      if (session && session.revokedAt) return res.status(401).json({ error: "This session has been signed out. Please sign in again." });
+      if (session && onSeen) {
+        Promise.resolve(onSeen(payload.jti, session.lastSeenAt)).catch(() => {});
+      }
+    }
     next();
-  } catch {
-    return res.status(401).json({ error: "Invalid or expired token" });
-  }
+  };
 }
+
+export const authMiddleware = createAuthMiddleware();
 
 export function requireRole(...roles) {
   return (req, res, next) => {
@@ -66,6 +84,12 @@ export function withProfileDefaults(u) {
     connections: list(u.connections),
     pendingSent: list(u.pendingSent),
     pendingReceived: list(u.pendingReceived),
+    // Optional profile depth + social graph additions (older accounts simply
+    // don't carry them yet, so they read back as empty lists).
+    experienceList: list(u.experienceList),
+    education: list(u.education),
+    following: list(u.following),
+    followers: list(u.followers),
     verified: u.verified === true
   };
 }
